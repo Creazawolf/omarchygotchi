@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "id": "creaza.tamagotchi",
+  "name": "Omarchygotchi",
+  "version": "3.0.0",
+  "author": "Creazawolf",
+  "license": "MIT",
+  "description": "A little desktop companion with gentle care, real friendships, shared stories, and families.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omarchygotchi",
+    "description": "An affectionate companion with real visitors and shared stories.",
+    "category": "Fun",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "notifications": true,
+      "chatter": true,
+      "nagCooldownMinutes": 45,
+      "quietHours": "23-7",
+      "canDie": false,
+      "awareness": true,
+      "contextChatter": true,
+      "gentleCare": true,
+      "careNotifications": false
+    },
+    "schema": [
+      {
+        "key": "notifications",
+        "type": "boolean",
+        "label": "Story and life notifications",
+        "defaultValue": true
+      },
+      {
+        "key": "chatter",
+        "type": "boolean",
+        "label": "Random chatter",
+        "defaultValue": true
+      },
+      {
+        "key": "nagCooldownMinutes",
+        "type": "integer",
+        "label": "Minutes between nags",
+        "min": 5,
+        "max": 240,
+        "step": 5,
+        "defaultValue": 45
+      },
+      {
+        "key": "quietHours",
+        "type": "string",
+        "label": "Quiet hours (H-H)",
+        "defaultValue": "23-7"
+      },
+      {
+        "key": "canDie",
+        "type": "boolean",
+        "label": "Neglect can be fatal",
+        "defaultValue": false
+      },
+      {
+        "key": "awareness",
+        "type": "boolean",
+        "label": "System awareness",
+        "defaultValue": true,
+        "description": "React to music, browsing, coding, AI agents and you stepping away."
+      },
+      {
+        "key": "contextChatter",
+        "type": "boolean",
+        "label": "Awareness notifications",
+        "defaultValue": true,
+        "description": "Occasional remarks about what you are doing. Rarer than care nags."
+      },
+      {
+        "key": "gentleCare",
+        "type": "boolean",
+        "label": "Gentle care",
+        "defaultValue": true,
+        "description": "Self-care while away, slow needs, and an affectionate reunion."
+      },
+      {
+        "key": "careNotifications",
+        "type": "boolean",
+        "label": "Reminders for care",
+        "defaultValue": false
+      }
+    ]
+  }
+}
