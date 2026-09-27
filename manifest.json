@@ -29,7 +29,9 @@
       "awareness": true,
       "contextChatter": true,
       "gentleCare": true,
-      "careNotifications": false
+      "careNotifications": false,
+      "seasonal": true,
+      "calmMotion": false
     },
     "schema": [
       {
@@ -91,6 +93,20 @@
         "type": "boolean",
         "label": "Reminders for care",
         "defaultValue": false
+      },
+      {
+        "key": "seasonal",
+        "type": "boolean",
+        "label": "Seasonal costumes",
+        "defaultValue": true,
+        "description": "A witch hat and a pumpkin in Halloween week."
+      },
+      {
+        "key": "calmMotion",
+        "type": "boolean",
+        "label": "Calm motion",
+        "defaultValue": false,
+        "description": "No dancing, wandering, falling code or pulsing badges. Expressions and props stay."
       }
     ]
   }

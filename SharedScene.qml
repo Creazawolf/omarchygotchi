@@ -29,12 +29,19 @@ Item {
       model: 15
       Rectangle {
         required property int index
-        x: 20 + (index * 137) % 600; y: 35 + (index * 41) % 145
+        // Offset by one so no star lands against the start of the eyebrow.
+        x: 20 + ((index + 1) * 137) % 600; y: 35 + ((index + 1) * 41) % 145
         width: index % 3 === 0 ? 3 : 2; height: width; radius: width
         color: "#e6dca6"; opacity: 0.5
       }
     }
-    Rectangle { x: -50; y: 275; width: 740; height: 230; radius: 210; color: "#344c42" }
+    // The hill is clipped short of the bottom so it cannot square off the
+    // rounded corners; a band with the frame's own radius finishes the ground.
+    Item {
+      width: 640; height: 372; clip: true
+      Rectangle { x: -50; y: 275; width: 740; height: 230; radius: 210; color: "#344c42" }
+    }
+    Rectangle { y: 352; width: 640; height: 48; radius: 18; color: "#344c42" }
     Text { x: 26; y: 24; text: root.eyebrow; color: "#c8d8bd"; font.pixelSize: 13; font.letterSpacing: 2; textFormat: Text.PlainText }
     Repeater {
       model: root.people

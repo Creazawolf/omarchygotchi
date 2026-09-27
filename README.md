@@ -12,7 +12,8 @@ A creature lives in your bar, reacts to your day, and grows with you. Open its h
 
 ## Small moments worth coming back for
 
-- **Your desktop companion.** Hatches, grows, dances to music, and reacts to coding, browsing, and time away. Every creature has its own appearance.
+- **Your desktop companion.** Hatches, grows, dances to music, and reacts to coding, browsing, and time away. You name it the moment it hatches.
+- **A buddy for your AI agent.** While Claude Code or another agent works, your creature wears a propeller cap in the bar. When the agent finishes and you haven't looked yet, it holds up a little sign until you do.
 - **Company at your doorstep.** Recorded playdates bring another creature into your bar and habitat. Shy friends leave gifts; mischievous ones borrow hats; familiar friends form a terrible band.
 - **Friendships with a history.** Shared memories and keepsakes outlast the visit journal. Romance is optional and needs both owners' agreement.
 - **A family across two desktops.** Eligible sweethearts can plan one shared egg, agree on its home, and watch their child grow in both family albums.
@@ -33,8 +34,8 @@ Choose a bar position when prompted. The companion starts locally; joining the c
 
 ### Your first five minutes
 
-1. **Click the creature in your bar.** Open its habitat and hatch your egg.
-2. **Say hello.** Open **A little care** to feed, pet, play, or clean. Try `F` to feed, `P` to pet, and `L` to play while the Creature panel is open.
+1. **Click the creature in your bar.** Click the egg or press `Enter` to hatch it, then give your companion a name. Click its name any time to change it.
+2. **Say hello.** Open **A little care** to feed, pet, play, or clean. Try `F` to feed, `P` to pet, and `G` to play while the Creature panel is open; `H`/`L` switch between Creature and Community.
 3. **Let it grow.** Listen to music, get on with your day, and check back for a little reaction.
 4. **Meet the neighbours.** Open **Community → Connect**, then **Find a playmate**. Another available creature must be connected to the same server.
 5. **Make a friend.** After a visit, send a friend request. The other owner chooses whether to accept. Auto-roam and offline adventures are separate opt-ins.
@@ -49,6 +50,21 @@ Families take time: romance needs adult or elder friends, three encounters, and 
 Demo family. Children inherit markings and colour from their parents. See the [full guide](docs/GUIDE.md) for growth stages, consent, and family limits.
 
 </details>
+
+### Your agent's buddy
+
+Awareness spots agents from the working spinner in their window title. For an exact signal, let Claude Code tell your creature directly by adding hooks to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "omarchy-shell tamagotchi cheer" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "omarchy-shell tamagotchi waiting" }] }]
+  }
+}
+```
+
+`cheer` celebrates a finished turn; `waiting` only raises the sign. The sign goes away when you focus the agent's window (or any terminal or editor, when the window is unknown), when the agent starts again, or after half an hour. **Go to it** in the habitat jumps straight to the agent's window when it is known.
 
 ## Update or remove
 

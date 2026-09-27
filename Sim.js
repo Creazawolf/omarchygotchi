@@ -48,8 +48,29 @@ var MAX_POOPS = 4
 var NAMES = [
   "Blobbo", "Nugget", "Pixel", "Bubble", "Waffles", "Ziggy", "Mochi",
   "Tufty", "Pebble", "Squish", "Puddle", "Bear", "Snorkel", "Bean",
-  "Froggy", "Fluffy", "Thunder", "Plum", "Bun", "Zappo"
+  "Froggy", "Fluffy", "Thunder", "Plum", "Bun", "Zappo",
+  "Biscuit", "Noodle", "Pickle", "Sprout", "Taffy", "Gizmo", "Crumb",
+  "Dumpling", "Kiwi", "Tofu", "Wobble", "Marble", "Pudding", "Button",
+  "Clover", "Doodle", "Fig", "Gumdrop", "Nibble", "Moss", "Pesto",
+  "Quark", "Sprocket", "Tater", "Yuzu", "Cosmo", "Echo", "Latte",
+  "Kernel", "Grep", "Sudo", "Cache", "Glitch", "Patch", "Bit"
 ]
+
+// A different name from the list, for the reroll next to the naming field.
+function suggestName(current) {
+  var pick = current
+  for (var i = 0; i < 8 && pick === current; i++)
+    pick = NAMES[Math.floor(Math.random() * NAMES.length)]
+  return pick
+}
+
+// Names travel to the community server, which only accepts 1–20 visible
+// characters. Control and invisible formatting characters are dropped rather
+// than rejected, and the length is counted in characters, not UTF-16 units.
+function cleanName(raw) {
+  var s = String(raw || "").replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, "").trim()
+  return Array.from(s).slice(0, 20).join("").trim()
+}
 
 function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v) }
 function clamp100(v) { return clamp(v, 0, 100) }
@@ -75,6 +96,9 @@ function newState(nowMs, generation, previousScore) {
     generation: generation || 1,
     seed: seed,
     name: seededPick(NAMES, seed, 7),
+    // Until the owner has chosen (or kept) a name, the panel asks once after
+    // hatching. The seeded name above is only the suggestion.
+    named: false,
     bornAt: nowMs,
     diedAt: null,
     causeOfDeath: "",
@@ -117,6 +141,8 @@ function normalize(raw, nowMs) {
   out.care = raw.care || base.care
   out.nagCooldowns = raw.nagCooldowns || {}
   out.seed = (Number(raw.seed) >>> 0) || base.seed
+  // Saves from before naming existed keep the name they have lived with.
+  out.named = raw.named === undefined ? true : raw.named === true
   out.version = VERSION
   return out
 }
@@ -145,6 +171,13 @@ function stageScale(key) {
 function stageIndex(key) {
   for (var i = 0; i < STAGES.length; i++) if (STAGES[i].key === key) return i
   return 0
+}
+
+// The stage that comes next, or "" when fully grown.
+function nextStageKey(state, nowMs) {
+  var h = ageHours(state, nowMs)
+  for (var i = 0; i < STAGES.length; i++) if (STAGES[i].hours > h) return STAGES[i].key
+  return ""
 }
 
 // Hours until the next evolution, or -1 when fully grown. Drives the panel's
@@ -507,6 +540,14 @@ function dailyProgress(state, nowMs) {
 }
 function act(state, action, nowMs) {
   return careAction(state, action, nowMs)
+}
+
+// Seasonal dress-up, by the local calendar. Purely cosmetic: nothing in the
+// simulation reads it, and it can be switched off in the widget settings.
+function season(nowMs) {
+  var d = new Date(nowMs)
+  if (d.getMonth() === 9 && d.getDate() >= 24) return "halloween"
+  return ""
 }
 
 function personality(state) { return ["shy", "generous", "mischievous", "outgoing"][state.seed % 4] }

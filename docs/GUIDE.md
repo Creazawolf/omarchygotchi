@@ -49,6 +49,8 @@ The creature still reacts to your apps, music, AI agents, idle time and time of 
 | `nagCooldownMinutes` | `45` | Reminder cooldown if enabled |
 | `awareness` | `true` | Local reactions to music, apps and activity |
 | `contextChatter` | `true` | Occasional awareness remarks |
+| `seasonal` | `true` | A witch hat and a pumpkin in Halloween week |
+| `calmMotion` | `false` | No dancing, wandering, falling code or pulsing badges; expressions and props stay |
 
 Settings live on the widget’s entry in `~/.config/omarchy/shell.json`. Explicit existing settings are respected.
 

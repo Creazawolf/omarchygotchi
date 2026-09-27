@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
 import "Sim.js" as Sim
@@ -46,6 +47,128 @@ Panel {
   function burst(effect) { sparkles.burst(effect) }
   function jump() { creature.jump() }
 
+  // ------------------------------------------------------------ hatching
+  //
+  // Clicking the egg, pressing Enter or the Hatch button all come here. The
+  // creature knocks and cracks first; only then is the hatch committed. The
+  // reveal is driven by `hatched()`, which the host calls for every hatch —
+  // this one, the automatic one, or one sent over IPC.
+
+  function beginHatch() {
+    if (!isEgg || dead || creature.hatching) return
+    if (!opened) { act("hatch"); return }
+    creature.crackOpen(function() {
+      root.act("hatch")
+      // Refused after all: close the crack rather than leave it hanging open.
+      if (root.isEgg) creature.crack = 0
+    })
+  }
+
+  function hatched() { if (opened) creature.revealHatch() }
+
+  // ------------------------------------------------------------- naming
+
+  property bool renaming: false
+  readonly property bool needsName: pet ? (pet.named === false && !dead && !isEgg) : false
+  // The card takes the egg's place the instant it hatches, so the layout never
+  // jumps through the story lines; it only fades in once the baby is out.
+  readonly property bool naming: needsName || renaming
+
+  function startRename() {
+    if (!pet || dead || isEgg) return
+    renaming = true
+    offerName()
+  }
+
+  function finishNaming(name) {
+    renaming = false
+    if (host) host.rename(name)
+    keyCatcher.forceActiveFocus()
+  }
+
+  function cancelNaming() {
+    renaming = false
+    keyCatcher.forceActiveFocus()
+  }
+
+  function offerName() { if (naming && opened && !creature.hatching) nameFocus.restart() }
+
+  // The panel hands focus to its key catcher once the surface has mapped
+  // (KeyboardPanel's focus prime, ~75 ms). Taking it for the name field any
+  // sooner would just be taken back.
+  Timer {
+    id: nameFocus
+    interval: 140
+    onTriggered: if (root.naming && root.opened && !creature.hatching) namingCard.begin()
+  }
+
+  onNamingChanged: offerName()
+  onOpenedChanged: {
+    offerName()
+    if (!opened) renaming = false
+  }
+
+  Connections {
+    target: creature
+    function onHatchingChanged() { root.offerName() }
+  }
+
+  function hatchCountdown() {
+    return pet ? Msg.duration(Sim.hoursToNextStage(pet, now)) : ""
+  }
+
+  // ------------------------------------------------------------ the story
+  //
+  // One headline, one supporting line, one next step. What happened last
+  // outranks what could happen, and the button is always the next thing to
+  // do rather than a place to go.
+
+  readonly property var bonds: social && social.snapshot ? social.snapshot.bonds || [] : []
+  readonly property var friendIds: social && social.snapshot
+    ? (social.snapshot.friends || []).map(function(p) { return p.id }) : []
+  readonly property var closestBond: {
+    for (var i = 0; i < bonds.length; i++)
+      if (friendIds.indexOf(bonds[i].creature.id) >= 0) return bonds[i]
+    return bonds.length ? bonds[0] : null
+  }
+  readonly property bool socialReady: !!social && social.optedIn === true && social.connected === true
+    && social.available === true && !social.busy && !social.disconnectRequested
+
+  readonly property string storyHeadline: {
+    if (!pet) return ""
+    if (pet.reunionAt && now - pet.reunionAt < 3600000) return strings.storyReunion
+    if (activeVisit) return Msg.format(strings.storyVisiting, { guest: activeVisit.creature.name })
+    if (latestVisit) return Msg.format(strings.storyLastTime,
+      { name: pet.name, guest: latestVisit.creature.name, activity: latestVisit.activity })
+    return strings.storyQuiet
+  }
+
+  readonly property string storyDetail: {
+    if (!pet) return ""
+    if (activeVisit) return strings.storyVisitingDetail
+    var lines = []
+    if (latestVisit && latestVisit.scene) lines.push(Msg.format(strings.storyKept, { keepsake: latestVisit.scene.keepsake }))
+    else if (!latestVisit) lines.push(social && social.optedIn ? strings.storyQuietDetailConnected : strings.storyQuietDetail)
+    if (closestBond) lines.push(Msg.format(strings.storyClosest, { friend: closestBond.creature.name, level: closestBond.level }))
+    return lines.join("\n")
+  }
+
+  // { label, ready, kind } or null when there is nothing to do but enjoy it.
+  readonly property var nextStep: {
+    if (!social || !pet || dead || activeVisit) return null
+    if (!social.optedIn) return { label: strings.nextPark, ready: true, kind: "park" }
+    var friend = closestBond && friendIds.indexOf(closestBond.creature.id) >= 0 ? closestBond.creature : null
+    if (friend) return { label: Msg.format(strings.nextInvite, { friend: friend.name }), ready: socialReady, kind: "invite", target: friend.id }
+    return { label: strings.nextFind, ready: socialReady, kind: "find" }
+  }
+
+  function takeNextStep() {
+    var step = nextStep
+    if (!step) return
+    if (step.kind === "park") communityTab = true
+    else if (step.ready) social.call("visit", step.kind === "invite" ? step.target : "")
+  }
+
   // ------------------------------------------------------------ view model
 
   readonly property var pet: host ? host.pet : null
@@ -65,6 +188,9 @@ Panel {
 
   readonly property color fg: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(fg, 1.4)
+  // Text drawn over the sky. The foreground at reduced alpha rather than a
+  // darker grey, so it keeps its contrast when the sky warms at sunset.
+  readonly property color skyText: Qt.rgba(fg.r, fg.g, fg.b, 0.8)
 
   // ------------------------------------------------------------- awareness
 
@@ -74,6 +200,9 @@ Panel {
   readonly property int musicBeatMs: host ? host.musicBeatMs : 500
   readonly property string activityLine: host ? host.activityLine : ""
   readonly property bool attention: host ? host.attention : false
+  readonly property bool agentWaiting: host ? host.agentWaiting === true : false
+  readonly property string costume: host && host.costume ? host.costume : ""
+  readonly property bool calm: host ? host.calm === true : false
 
   // ---------------------------------------------------------- time of day
   //
@@ -131,11 +260,14 @@ Panel {
   // A reaction to whatever the user just did wins the bubble for a couple of
   // seconds; the rest of the time the creature comments on its own condition.
   readonly property string bubbleText: {
+    if (isEgg && creature.hatching) return "*crack*"
     if (host && host.reactionText !== "") return host.reactionText
+    if (agentWaiting && !isEgg && !dead && !asleep) return Msg.bubbleMode("waiting", language, Math.floor(now / 45000))
     // A complaint outranks small talk; otherwise it comments on whatever you
     // are doing, and only falls back to generic contentment when nothing is.
     if (attention || asleep || isEgg) return Msg.bubble(needKey, language, Math.floor(now / 45000))
     var mode = musicPlaying && activityMode === "idle" ? "music" : activityMode
+    if (mode === "idle" && costume === "witch") mode = "halloween"
     var line = Msg.bubbleMode(mode, language, Math.floor(now / 45000))
     return line !== "" ? line : Msg.bubble(needKey, language, Math.floor(now / 45000))
   }
@@ -144,18 +276,17 @@ Panel {
     if (!pet) return ""
     // A dead creature's age is how long it lived, not how long ago it was
     // born — a headstone that keeps counting is just cruel.
-    var h = ((pet.diedAt || now) - pet.bornAt) / 3600000
-    if (h < 1) return Math.max(1, Math.round(h * 60)) + strings.minutes
-    if (h < 48) return (Math.round(h * 10) / 10) + strings.hours
-    return (Math.round(h / 24 * 10) / 10) + strings.days
+    return Msg.duration(((pet.diedAt || now) - pet.bornAt) / 3600000)
   }
 
   function growthText() {
     if (!pet || dead) return ""
-    var h = Sim.hoursToNextStage(pet, now)
-    if (h < 0) return strings.fullyGrown
-    return strings.growsIn + " " + (h < 1 ? Math.round(h * 60) + strings.minutes
-                                          : (Math.round(h * 10) / 10) + strings.hours)
+    var next = Sim.nextStageKey(pet, now)
+    if (next === "") return strings.fullyGrown
+    return Msg.format(strings.growsInto, {
+      stage: Msg.stageLabel(next, language).toLowerCase(),
+      time: Msg.duration(Sim.hoursToNextStage(pet, now))
+    })
   }
 
   function act(action) { if (host) host.perform(action) }
@@ -171,7 +302,7 @@ Panel {
   property real walkDir: 1
   property bool wandering: false
 
-  readonly property bool canWander: opened && !dead && !isEgg && !asleep && !musicPlaying
+  readonly property bool canWander: opened && !calm && !dead && !isEgg && !asleep && !musicPlaying
     && (activityMode === "idle" || activityMode === "chatting" || activityMode === "browsing")
 
   Timer {
@@ -223,6 +354,14 @@ Panel {
   })
   function isSuggested(action) { return !dead && needAction[needKey] === action }
 
+  // Letters for the care actions. `l` belongs to the panel's hjkl navigation,
+  // so play is `g`, for game.
+  readonly property var shortcuts: ({ f: "feed", s: "snack", p: "pet", g: "play", c: "clean", m: "medicine", z: asleep ? "wake" : "sleep" })
+  function shortcutFor(action) {
+    for (var key in shortcuts) if (shortcuts[key] === action) return key.toUpperCase()
+    return ""
+  }
+
   // Buttons that would only ever be refused are disabled rather than hidden:
   // a stable grid you can learn beats one that reshuffles every time the
   // creature falls asleep.
@@ -250,13 +389,20 @@ Panel {
 
     PanelKeyCatcher {
       id: keyCatcher
-      blocked: communityPanel.editing
+      blocked: communityPanel.editing || namingCard.editing
       anchors.fill: parent
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      onActivateRequested: if (!root.communityTab && root.isEgg && !root.dead) root.beginHatch()
+      // Like the shell's other panels: h/l (←/→) move between the two tabs,
+      // j/k (↓/↑) scroll.
+      onMoveRequested: function(dx, dy) {
+        if (dx !== 0) root.communityTab = dx > 0
+        if (dy !== 0) scroll.contentY = Math.max(0, Math.min(scroll.contentHeight - scroll.height, scroll.contentY + dy * Style.space(60)))
+      }
       onTextKey: function(t) {
         if (root.communityTab) return
-        var map = { f: "feed", s: "snack", p: "pet", l: "play", c: "clean", m: "medicine", z: root.asleep ? "wake" : "sleep" }
+        var map = root.shortcuts
         var action = map[String(t).toLowerCase()]
         if (action && root.canAct(action)) root.act(action)
       }
@@ -352,7 +498,7 @@ Panel {
           // atmosphere, not a readout.
           Item {
             id: agentRain
-            visible: root.opened && root.activityMode === "agent" && !root.dead
+            visible: root.opened && !root.calm && root.activityMode === "agent" && !root.dead
             anchors.fill: parent
             clip: true
             opacity: 0.15
@@ -405,7 +551,7 @@ Panel {
               // Twinkle amplitude rides the clock, so the sky empties out over
               // breakfast instead of switching off.
               SequentialAnimation on opacity {
-                running: root.opened && star.visible
+                running: root.opened && !root.calm && star.visible
                 loops: Animation.Infinite
                 PauseAnimation { duration: star.index * 190 }
                 NumberAnimation { to: 0.42 * root.nightness; duration: 1200 + star.index * 40 }
@@ -426,12 +572,90 @@ Panel {
             opacity: 0.13
           }
 
+          // Halloween week: a jack-o'-lantern on the ground, lit after dark.
+          Item {
+            id: pumpkin
+            visible: root.costume === "witch" && !root.dead
+            width: Style.space(38)
+            height: Style.space(30)
+            x: terrarium.width * 0.09
+            y: terrarium.height - Style.space(14) - height
+
+            Rectangle {
+              x: 0; y: parent.height * 0.12
+              width: parent.width * 0.56; height: parent.height * 0.86
+              radius: width / 2
+              color: "#c9692a"
+            }
+            Rectangle {
+              x: parent.width * 0.44; y: parent.height * 0.12
+              width: parent.width * 0.56; height: parent.height * 0.86
+              radius: width / 2
+              color: "#c9692a"
+            }
+            Rectangle {
+              x: parent.width * 0.19; y: parent.height * 0.08
+              width: parent.width * 0.62; height: parent.height * 0.92
+              radius: width / 2
+              color: "#e8843a"
+            }
+            Rectangle {
+              x: parent.width * 0.46; y: -parent.height * 0.02
+              width: parent.width * 0.10; height: parent.height * 0.22
+              radius: width / 2
+              rotation: 14
+              color: "#6b8a3e"
+            }
+
+            // Carved face: dark by day, candlelit by night.
+            Shape {
+              anchors.fill: parent
+              preferredRendererType: Shape.CurveRenderer
+              ShapePath {
+                fillColor: root.isNight ? "#ffd166" : "#4a2a12"
+                strokeWidth: 0
+                startX: pumpkin.width * 0.31; startY: pumpkin.height * 0.50
+                PathLine { x: pumpkin.width * 0.37; y: pumpkin.height * 0.36 }
+                PathLine { x: pumpkin.width * 0.43; y: pumpkin.height * 0.50 }
+              }
+              ShapePath {
+                fillColor: root.isNight ? "#ffd166" : "#4a2a12"
+                strokeWidth: 0
+                startX: pumpkin.width * 0.57; startY: pumpkin.height * 0.50
+                PathLine { x: pumpkin.width * 0.63; y: pumpkin.height * 0.36 }
+                PathLine { x: pumpkin.width * 0.69; y: pumpkin.height * 0.50 }
+              }
+              ShapePath {
+                fillColor: root.isNight ? "#ffd166" : "#4a2a12"
+                strokeWidth: 0
+                startX: pumpkin.width * 0.30; startY: pumpkin.height * 0.62
+                PathLine { x: pumpkin.width * 0.40; y: pumpkin.height * 0.70 }
+                PathLine { x: pumpkin.width * 0.50; y: pumpkin.height * 0.64 }
+                PathLine { x: pumpkin.width * 0.60; y: pumpkin.height * 0.70 }
+                PathLine { x: pumpkin.width * 0.70; y: pumpkin.height * 0.62 }
+                PathQuad { x: pumpkin.width * 0.30; y: pumpkin.height * 0.62; controlX: pumpkin.width * 0.50; controlY: pumpkin.height * 0.90 }
+              }
+            }
+
+            // The candle's glow spills onto the ground after dark.
+            Rectangle {
+              visible: root.isNight
+              anchors.centerIn: parent
+              width: parent.width * 2.2
+              height: width * 0.6
+              radius: height / 2
+              color: "#ffd166"
+              opacity: 0.08
+              z: -1
+            }
+          }
+
           // Music makes the floor light up. Each bar's height is a pure hash of
           // (beat, index), so the whole row re-rolls exactly on the beat with
           // no timers of its own — the Behavior does the animating.
           Row {
             id: equalizer
-            visible: root.opened && root.musicPlaying && !root.dead
+            visible: root.opened && !root.calm && root.musicPlaying && !root.dead
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
             width: terrarium.width
@@ -486,13 +710,16 @@ Panel {
             beatMs: root.musicBeatMs
             walking: root.wandering
             walkDir: root.walkDir
+            costume: root.costume
+            calm: root.calm
           }
 
           Sparkles {
             id: sparkles
             anchors.fill: parent
-            originX: terrarium.width / 2
-            originY: terrarium.height * 0.52
+            // From the creature, wherever it has wandered to.
+            originX: creature.x + creature.width / 2
+            originY: creature.y + creature.height * 0.52
             spread: Style.space(78)
             glyphSize: Style.font.title
             inkColor: root.fg
@@ -502,34 +729,64 @@ Panel {
           MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton
-            cursorShape: root.canAct("pet") ? Qt.PointingHandCursor : Qt.ArrowCursor
+            cursorShape: root.dead || root.isEgg || root.canAct("pet") ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: {
               if (root.dead) root.act("newEgg")
-              else if (root.isEgg) root.act("hatch")
+              else if (root.isEgg) root.beginHatch()
               else if (root.canAct("pet")) root.act("pet")
               else root.act("wake")
             }
           }
 
           // ---- name plate
+          // A plate in the sky's own colour: invisible on an empty sky, but the
+          // sun, the stars and the agent rain pass behind the text, not over it.
+          Rectangle {
+            x: plate.x - Style.space(6)
+            y: plate.y - Style.space(4)
+            width: plate.width + Style.space(12)
+            height: plate.height + Style.space(8)
+            radius: Style.space(6)
+            color: Qt.rgba(root.skyTop.r, root.skyTop.g, root.skyTop.b, 0.78)
+          }
+
           Column {
+            id: plate
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: Style.space(10)
             spacing: Style.space(1)
 
+            // The name is where you rename it: hover says so, a click opens
+            // the naming card below. While naming it previews what you type.
             Text {
-              text: root.pet ? root.pet.name : "—"
+              id: namePlate
+              text: root.isEgg ? root.strings.egg
+                  : (root.naming && namingCard.cleaned !== "") ? namingCard.cleaned
+                  : (root.pet ? root.pet.name : "—")
               textFormat: Text.PlainText
               color: root.fg
               font.family: Style.font.family
               font.pixelSize: Style.font.title
               font.bold: true
+              font.underline: nameHover.containsMouse
+
+              MouseArea {
+                id: nameHover
+                anchors.fill: parent
+                enabled: !root.isEgg && !root.dead
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.startRename()
+              }
             }
             Text {
-              text: Msg.stageLabel(root.stageKey, root.language) + " · " + root.ageText()
+              text: root.isEgg ? root.strings.hatchesIn + " " + root.hatchCountdown()
+                  : root.dead ? Msg.stageLabel(root.stageKey, root.language) + " · " + root.ageText()
+                  : [Msg.stageLabel(root.stageKey, root.language), root.pet ? Sim.personality(root.pet) : "", root.ageText()]
+                      .filter(function(part) { return part !== "" }).join(" · ")
               textFormat: Text.PlainText
-              color: root.dim
+              color: root.skyText
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
               font.bold: true
@@ -540,12 +797,11 @@ Panel {
             // exists to be able to write.
             Text {
               text: root.activityLine
-              visible: text !== "" && !root.dead
+              visible: text !== "" && !root.dead && !root.isEgg
               textFormat: Text.PlainText
               width: terrarium.width * 0.56
               elide: Text.ElideRight
-              color: root.dim
-              opacity: 0.85
+              color: root.skyText
               topPadding: Style.space(3)
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
@@ -559,7 +815,7 @@ Panel {
             anchors.margins: Style.space(10)
             text: "GEN " + (root.pet ? root.pet.generation : 1)
             textFormat: Text.PlainText
-            color: root.dim
+            color: root.skyText
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
             font.bold: true
@@ -659,8 +915,8 @@ Panel {
             }
             Text {
               text: root.growthText()
-              visible: text !== "" && !root.dead
-              color: root.dim
+              visible: text !== "" && !root.dead && !root.isEgg
+              color: root.skyText
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
               font.bold: true
@@ -736,38 +992,173 @@ Panel {
             tint: Qt.hsla(Sim.seededUnit(root.householdChild ? root.householdChild.colorSeed : 0, 11), 0.52, 0.62, 1)
           }
         }
-        Text {
-          width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
-          text: root.pet ? root.pet.name + " · " + Sim.personality(root.pet) + (root.pet.reunionAt && root.now - root.pet.reunionAt < 3600000 ? "\nYou’re back. I saved your spot." : "") : ""
-          color: root.fg; font.pixelSize: Style.font.body
-        }
-        Text {
-          width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
-          text: root.latestVisit ? "Last time: " + root.latestVisit.creature.name + " and " + root.pet.name + " " + root.latestVisit.activity + "." + (root.latestVisit.scene ? "\nKept: " + root.latestVisit.scene.keepsake + "." : "") : "A quiet moment at home. The park is where shared stories begin."
-          color: root.fg; font.pixelSize: Style.font.caption
-        }
-        Text {
-          width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
-          text: {
-            var bonds = root.social ? root.social.snapshot.bonds || [] : []
-            return bonds.length ? "Who matters: " + bonds.slice(0,3).map(function(b) { return b.creature.name + " (" + b.level + ")" }).join(", ") + "." : "There’s room for a friend beside me."
+        // ------------------------------------------------ first moments
+        // An egg asks for exactly one thing, and so does a nameless hatchling.
+        Column {
+          id: eggBlock
+          visible: root.isEgg && !root.dead
+          width: parent.width
+          spacing: Style.space(8)
+
+          Text {
+            width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+            text: root.strings.eggPrompt
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.subtitle
+            font.bold: true
           }
-          color: Color.accent; font.pixelSize: Style.font.caption
+          Row {
+            spacing: Style.space(10)
+            Button {
+              id: hatchButton
+              text: root.strings.hatchIt
+              bordered: true
+              selected: true
+              foreground: root.fg
+              accent: root.tint
+              enabled: !creature.hatching
+              opacity: enabled ? 1 : 0.38
+              onClicked: root.beginHatch()
+            }
+            Text {
+              anchors.verticalCenter: hatchButton.verticalCenter
+              width: eggBlock.width - hatchButton.width - parent.spacing
+              text: Msg.fill(root.strings.eggHint, "", 1, root.hatchCountdown())
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              color: root.dim
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
         }
-        Text {
-          width: parent.width; wrapMode: Text.WordWrap
-          text: root.activeVisit ? "Stay a while. This visit lasts about fifteen minutes." : root.social && root.social.roaming ? "Next: another visit when a playmate is available. Your album keeps the memories." : "Next: invite a familiar face or meet someone new in the park."
-          color: root.fg; opacity: 0.7; font.pixelSize: Style.font.caption
+
+        Naming {
+          id: namingCard
+          visible: root.naming
+          opacity: creature.hatching ? 0 : 1
+          Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+          width: parent.width
+          currentName: root.pet ? root.pet.name : ""
+          firstTime: root.needsName
+          language: root.language
+          foreground: root.fg
+          accent: root.tint
+          onChosen: function(name) { root.finishNaming(name) }
+          onCancelled: root.cancelNaming()
         }
-        Flow {
-          width: parent.width; spacing: Style.space(6)
-          Button { text: "Stories & family"; bordered: true; foreground: root.fg; onClicked: root.communityTab = true }
-          Button { text: root.careExpanded ? "Close care" : "A little care"; bordered: true; foreground: root.fg; onClicked: root.careExpanded = !root.careExpanded }
+
+        // Your agent finished while you were elsewhere: one line and one way
+        // back to it, above everything else the panel has to say.
+        Column {
+          id: waitingBlock
+          visible: root.agentWaiting && !root.isEgg && !root.naming && !root.dead
+          width: parent.width
+          spacing: Style.space(6)
+
+          Text {
+            width: parent.width
+            text: root.host && root.host.waitingTask !== ""
+                  ? Msg.fill(root.strings.agentWaitingTask, root.host.waitingTask)
+                  : root.strings.agentWaiting
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.subtitle
+            font.bold: true
+          }
+          Flow {
+            width: parent.width
+            spacing: Style.space(6)
+            Button {
+              visible: root.host ? root.host.canGoToAgent === true : false
+              text: root.strings.goToAgent
+              bordered: true
+              selected: true
+              foreground: root.fg
+              accent: root.tint
+              onClicked: { if (root.host.goToAgent()) root.close() }
+            }
+            Button {
+              text: root.strings.dismiss
+              bordered: true
+              foreground: root.fg
+              accent: root.tint
+              onClicked: root.host.dismissWaiting()
+            }
+          }
+        }
+
+        Column {
+          visible: !root.isEgg && !root.naming
+          width: parent.width
+          spacing: Style.space(6)
+
+          Text {
+            width: parent.width
+            text: root.storyHeadline
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            lineHeight: 1.15
+            color: root.fg
+            font.family: Style.font.family
+            font.pixelSize: Style.font.subtitle
+            font.bold: true
+          }
+          Text {
+            width: parent.width
+            visible: text !== ""
+            text: root.storyDetail
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            lineHeight: 1.15
+            color: root.dim
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+          }
+          Flow {
+            width: parent.width
+            spacing: Style.space(6)
+            topPadding: Style.space(4)
+            Button {
+              visible: root.nextStep !== null
+              text: root.nextStep ? root.nextStep.label : ""
+              bordered: true
+              selected: true
+              foreground: root.fg
+              accent: root.tint
+              enabled: root.nextStep ? root.nextStep.ready : false
+              opacity: enabled ? 1 : 0.38
+              onClicked: root.takeNextStep()
+            }
+            Button {
+              text: root.careExpanded ? root.strings.careClose : root.strings.careOpen
+              bordered: true
+              foreground: root.fg
+              accent: root.tint
+              onClicked: root.careExpanded = !root.careExpanded
+            }
+          }
+          // Why the next step is waiting, in the community's own words.
+          Text {
+            width: parent.width
+            visible: root.nextStep !== null && !root.nextStep.ready && text !== ""
+            text: root.social && root.social.status ? String(root.social.status) : ""
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: root.dim
+            font.family: Style.font.family
+            font.pixelSize: Style.font.bodySmall
+          }
         }
 
         // ------------------------------------------------------- the meters
         Column {
-          visible: root.careExpanded
+          visible: root.careExpanded && !root.isEgg && !root.naming
           width: parent.width
           spacing: Style.space(1)
           opacity: root.dead ? 0.35 : 1
@@ -805,11 +1196,11 @@ Panel {
           }
         }
 
-        PanelSeparator { visible: root.careExpanded; width: parent.width; foreground: root.fg }
+        PanelSeparator { visible: root.careExpanded && !root.isEgg && !root.naming; width: parent.width; foreground: root.fg }
 
         // ------------------------------------------------------- the buttons
         Flow {
-          visible: root.careExpanded
+          visible: root.careExpanded && !root.isEgg && !root.naming
           width: parent.width
           spacing: Style.space(6)
 
@@ -828,6 +1219,7 @@ Panel {
             Button {
               required property var modelData
               text: modelData.label
+              tooltipText: modelData.label + " · " + root.shortcutFor(modelData.key)
               iconText: Msg.actionGlyph(modelData.key)
               bordered: true
               focusable: true
@@ -840,16 +1232,6 @@ Panel {
             }
           }
 
-          Button {
-            visible: root.isEgg && !root.dead
-            text: root.strings.hatch
-            iconText: "🥚"
-            bordered: true
-            focusable: true
-            foreground: root.fg
-            accent: root.tint
-            onClicked: root.act("hatch")
-          }
         }
 
         }

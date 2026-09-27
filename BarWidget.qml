@@ -78,6 +78,12 @@ BarWidget {
   readonly property string trackArtist: senses ? senses.trackArtist : ""
   readonly property string agentTask: senses ? senses.agentTask : ""
   readonly property bool agentBusy: senses ? senses.agentBusy : false
+  readonly property bool agentWaiting: senses ? senses.agentWaiting : false
+  readonly property string waitingTask: senses ? senses.waitingTask : ""
+  readonly property bool canGoToAgent: senses ? senses.waitingToplevel !== null : false
+
+  function goToAgent() { return senses ? senses.goToWaiting() : false }
+  function dismissWaiting() { if (senses) senses.clearWaiting() }
 
   // What the creature thinks you are up to, as one line.
   readonly property string activityLine: {
@@ -100,6 +106,10 @@ BarWidget {
     else if (bar) bar.run("omarchy-shell -q tamagotchi " + action)
   }
 
+  // No shell fallback here: a name is user text and never goes into a command
+  // line. Without the service there is nothing to rename anyway.
+  function rename(name) { return service ? service.rename(name) : "" }
+
   // --------------------------------------------------------- derived view
 
   property real now: Date.now()
@@ -109,6 +119,8 @@ BarWidget {
   readonly property var strings: Msg.ui(language)
 
   readonly property string stageKey: pet ? Sim.stage(pet, now) : "egg"
+  readonly property bool calm: service ? service.calmMotion === true : false
+  readonly property string costume: service && service.seasonalEnabled && Sim.season(now) === "halloween" ? "witch" : ""
   readonly property string moodKey: pet ? Sim.mood(pet, now) : "neutral"
   readonly property string needKey: pet ? Sim.primaryNeed(pet, now) : "egg"
   readonly property bool attention: pet ? Sim.needsAttention(pet, now) : false
@@ -122,10 +134,16 @@ BarWidget {
     return Qt.tint(own, Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.18))
   }
 
+  readonly property string waitingLine: agentWaiting
+    ? (waitingTask !== "" ? Msg.fill(strings.agentWaitingTask, waitingTask) : strings.agentWaiting)
+    : ""
+
   readonly property string statusLine: {
     if (!pet) return "Omarchygotchi"
+    if (stageKey === "egg") return strings.eggTooltip
     var s = pet.stats
-    return pet.name + " · " + Msg.stageLabel(stageKey, language)
+    return (waitingLine === "" ? "" : waitingLine + "\n")
+      + pet.name + " · " + Msg.stageLabel(stageKey, language)
       + "\n" + Msg.glyph("hungry") + " " + Math.round(s.fullness)
       + "   " + Msg.glyph("lonely") + " " + Math.round(s.happiness)
       + "   " + Msg.glyph("tired") + " " + Math.round(s.energy)
@@ -143,14 +161,23 @@ BarWidget {
   // slot's particle layer can't be poked from out here. A signal crosses the
   // boundary cleanly and works for however many slots exist.
   signal effectBurst(string effect)
+  signal celebrate()
 
   // A burst plays on every monitor, however the action arrived — panel button,
   // bar click, or a notification the user clicked from another workspace.
   Connections {
     target: root.service
     ignoreUnknownSignals: true
-    function onReacted(action, effect, note, ok) { root.playReaction(effect, note, ok) }
+    function onReacted(action, effect, note, ok) {
+      if (action === "hatch" && ok && panelLoader.item) panelLoader.item.hatched()
+      // A finished agent run earns one hop in the bar: a single bounded
+      // animation, not a loop.
+      if (action === "watch" || action === "theme") root.celebrate()
+      root.playReaction(effect, note, ok)
+    }
     function onCreatureEvent(name) {
+      // A hatch that happened on its own gets the same reveal as a clicked one.
+      if (name === "evolve:baby" && panelLoader.item) panelLoader.item.hatched()
       if (name.indexOf("evolve:") === 0) root.playReaction("sparkle", "", true)
     }
   }
@@ -161,7 +188,7 @@ BarWidget {
       if (panelLoader.item) panelLoader.item.burst(effect)
     }
     if (note && note !== "") {
-      reactionText = Msg.reaction(note, language, Date.now() / 700)
+      reactionText = Msg.fill(Msg.reaction(note, language, Date.now() / 700), pet ? pet.name : "")
       reactionTimer.restart()
     }
     if (ok && effect === "star" && panelLoader.item) panelLoader.item.jump()
@@ -244,6 +271,13 @@ BarWidget {
         music: root.musicPlaying
         beat: root.musicBeat
         beatMs: root.musicBeatMs
+        costume: root.costume
+        calm: root.calm
+
+        Connections {
+          target: root
+          function onCelebrate() { if (!root.calm) barCreature.jump() }
+        }
       }
 
       Creature {
@@ -264,7 +298,7 @@ BarWidget {
       // hungry creature is visible from across the room without reading text.
       Rectangle {
         id: badge
-        visible: root.attention
+        visible: root.attention && !root.agentWaiting
         width: Math.max(5, parent.width * 0.30)
         height: width
         radius: width / 2
@@ -280,13 +314,60 @@ BarWidget {
         // repaint the whole bar every frame for as long as the creature is
         // hungry, which could be hours.
         SequentialAnimation on scale {
-          running: badge.visible
+          running: badge.visible && !root.calm
           loops: Animation.Infinite
           NumberAnimation { to: 1.4; duration: 190; easing.type: Easing.OutCubic }
           NumberAnimation { to: 1.0; duration: 260; easing.type: Easing.InOutSine }
           NumberAnimation { to: 1.3; duration: 170; easing.type: Easing.OutCubic }
           NumberAnimation { to: 1.0; duration: 240; easing.type: Easing.InOutSine }
           PauseAnimation { duration: 3200 }
+        }
+      }
+
+      // Your agent finished and you have not looked yet: a little sign with
+      // the "!" a game character shows when it has something for you. Dark
+      // on accent, so it reads over any creature colour; drawn rather than
+      // typed, so it stays crisp at 8px. It takes the badge's corner and its
+      // rhythm: two beats, then a long rest.
+      Rectangle {
+        id: waitingMark
+        visible: root.agentWaiting
+        width: Math.max(6, parent.width * 0.34)
+        height: width * 1.35
+        radius: width * 0.3
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: -width * 0.45
+        anchors.topMargin: -height * 0.14
+        color: Color.accent
+        border.width: 1
+        border.color: Color.bar.background
+
+        Rectangle {
+          width: Math.max(1.2, waitingMark.width * 0.18)
+          height: waitingMark.height * 0.40
+          radius: width / 2
+          x: (waitingMark.width - width) / 2
+          y: waitingMark.height * 0.17
+          color: Color.bar.background
+        }
+        Rectangle {
+          width: Math.max(1.2, waitingMark.width * 0.18)
+          height: width
+          radius: width / 2
+          x: (waitingMark.width - width) / 2
+          y: waitingMark.height * 0.68
+          color: Color.bar.background
+        }
+
+        SequentialAnimation on scale {
+          running: waitingMark.visible && !root.calm
+          loops: Animation.Infinite
+          NumberAnimation { to: 1.3; duration: 170; easing.type: Easing.OutCubic }
+          NumberAnimation { to: 1.0; duration: 240; easing.type: Easing.InOutSine }
+          NumberAnimation { to: 1.2; duration: 150; easing.type: Easing.OutCubic }
+          NumberAnimation { to: 1.0; duration: 220; easing.type: Easing.InOutSine }
+          PauseAnimation { duration: 3600 }
         }
       }
 

@@ -88,7 +88,7 @@ var NAG = {
     "dirty": [
       {
         "t": "%s smells",
-        "b": "Genuinely bad. Clean it."
+        "b": "Genuinely impressive. A bath, maybe?"
       },
       {
         "t": "Hygiene alert",
@@ -222,7 +222,7 @@ var BUBBLE = {
     ],
     "hungry": [
       "FOOD",
-      "i'm dying",
+      "tummy rumbling",
       "fooood...",
       "hey. food."
     ],
@@ -235,7 +235,7 @@ var BUBBLE = {
       "booored",
       "play?",
       "do something!",
-      "dying of boredom"
+      "so. bored."
     ],
     "lonely": [
       "pet me",
@@ -338,6 +338,17 @@ var REACTION = {
       "hello world!",
       "★"
     ],
+    "named": [
+      "%s! that's me!",
+      "%s. i love it",
+      "yes. %s."
+    ],
+    "newTheme": [
+      "ooh, new paint!",
+      "do i look good in this?",
+      "fresh colours!",
+      "redecorating?"
+    ],
     "tooFull": [
       "no. full.",
       "*oof*",
@@ -437,6 +448,18 @@ var BUBBLE_MODE = {
       "look look",
       "work, robot",
       "waiting..."
+    ],
+    "halloween": [
+      "boo!",
+      "trick or treat?",
+      "spooky season",
+      "i'm a witch now"
+    ],
+    "waiting": [
+      "psst. your turn",
+      "the robot's done!",
+      "it finished!",
+      "go look go look"
     ],
     "video": [
       "popcorn?",
@@ -563,17 +586,45 @@ var UI = {
     "medicine": "Medicine",
     "sleep": "Tuck in",
     "wake": "Wake",
-    "hatch": "Hatch",
     "newEgg": "New egg",
     "generation": "Generation",
     "age": "Age",
     "score": "Care score",
     "weight": "Weight",
     "poops": "Poops",
-    "days": "d",
-    "hours": "h",
-    "minutes": "m",
-    "growsIn": "grows in",
+    "hatchesIn": "hatches in",
+    "egg": "An egg",
+    "eggPrompt": "Your egg is wobbling. Something wants out.",
+    "eggHint": "Press Enter, or wait: it hatches on its own in %m.",
+    "storyReunion": "You're back. I saved your spot.",
+    "storyVisiting": "{guest} is visiting.",
+    "storyVisitingDetail": "They'll stay for about fifteen minutes.",
+    "storyLastTime": "Last time, {name} and {guest} {activity}.",
+    "storyKept": "Kept: {keepsake}.",
+    "storyClosest": "Closest: {friend} · {level}",
+    "storyQuiet": "A quiet day at home.",
+    "storyQuietDetail": "Shared stories begin in the park, with creatures from other Omarchy desktops.",
+    "storyQuietDetailConnected": "When another creature is free, your first shared story begins.",
+    "nextPark": "Visit the park",
+    "nextInvite": "Invite {friend} over",
+    "nextFind": "Find a playmate",
+    "careOpen": "A little care",
+    "careClose": "Close care",
+    "growsInto": "{stage} in {time}",
+    "hatchIt": "Hatch it",
+    "nameFirst": "It hatched! What will you call it?",
+    "nameAgain": "A new name for %s?",
+    "nameHint": "Creatures in the park will see this name.",
+    "nameLater": "You can change it later by clicking the name.",
+    "nameIt": "Name it",
+    "nameSave": "Save",
+    "nameCancel": "Cancel",
+    "nameAnother": "Try another",
+    "eggTooltip": "An egg is wobbling · click to hatch it",
+    "agentWaiting": "Your agent is waiting for you.",
+    "agentWaitingTask": "Your agent finished: %s",
+    "goToAgent": "Go to it",
+    "dismiss": "Dismiss",
     "fullyGrown": "fully grown",
     "asleep": "asleep",
     "sick": "sick",
@@ -621,6 +672,23 @@ function contextLine(key, code, seed) {
 }
 function glyph(need) { return GLYPHS[need] || "✨" }
 function actionGlyph(action) { return ACTION_GLYPHS[action] || "✨" }
+
+// Named placeholders, so a sentence with several values stays one string.
+function format(text, values) {
+  return String(text || "").replace(/\{(\w+)\}/g, function(all, key) {
+    return values && values[key] !== undefined ? String(values[key]) : all
+  })
+}
+
+// Durations as people say them. Growth is measured in days; nobody needs to
+// know it is 185.9 hours away.
+function duration(hours) {
+  var h = Math.max(0, Number(hours) || 0)
+  if (h < 1) { var m = Math.max(1, Math.round(h * 60)); return m + " min" }
+  if (h < 36) return Math.round(h) + " h"
+  var d = Math.round(h / 24)
+  return d + (d === 1 ? " day" : " days")
+}
 
 function fill(text, name, generation, minutes, track) {
   return String(text || "")

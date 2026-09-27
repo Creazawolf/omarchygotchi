@@ -25,6 +25,9 @@ Item {
   property int seed: 12345
   property real happiness: 70            // 0..100, drives the mouth curve
   property bool animated: true
+  // Calm motion: the creature keeps its expressions and props but stops
+  // dancing, and hatches with a fade instead of knocks and flying shell.
+  property bool calm: false
 
   // Awareness inputs. `activity` is Awareness.mode; `music` layers on top of
   // it, because a creature can dance and hold a laptop at the same time.
@@ -37,6 +40,9 @@ Item {
   // creature owns the gait, the panel owns where it is going.
   property bool walking: false
   property real walkDir: 1
+
+  // Seasonal dress-up from Sim.season(); "" most of the year.
+  property string costume: ""
 
   // Theme inputs.
   property color tint: "#7fd1c1"         // creature's own colour, derived per generation
@@ -56,6 +62,17 @@ Item {
   readonly property bool isEgg: stageKey === "egg"
   readonly property bool isGhost: mood === "dead" || stageKey === "ghost"
   readonly property bool asleep: mood === "asleep"
+
+  // What the gear layer is asked to show. An egg wears nothing, a ghost has no
+  // hands, and a sleeping creature puts its things down — except the nightcap
+  // it went to bed in.
+  readonly property string gearActivity: (isEgg || isGhost) ? ""
+                                       : (asleep && activity !== "away") ? ""
+                                       : activity
+  // A costume hat gives way to the hats that mean something: the propeller
+  // (an agent is working) and the nightcap.
+  readonly property bool costumeHat: costume === "witch" && !isEgg && !isGhost
+                                     && gearActivity !== "agent" && gearActivity !== "away"
 
   implicitWidth: size
   implicitHeight: size
@@ -123,7 +140,7 @@ Item {
   // Blinking is the single cheapest trick that makes a drawing look alive, so
   // it gets randomised intervals and the occasional double blink.
   Timer {
-    running: root.animated && !root.asleep && !root.isGhost && !root.isEgg
+    running: root.animated && !root.asleep && !root.isGhost && !root.isEgg && !root.hatching
     interval: 1600 + Math.random() * 4200
     repeat: true
     onTriggered: { blinkAnim.restart(); interval = 1600 + Math.random() * 4200 }
@@ -167,7 +184,7 @@ Item {
   // move — bounce, side-step, spin, arms up — which is the whole difference
   // between "an animation is playing" and "it is dancing".
 
-  readonly property bool dancing: music && animated && !asleep && !isGhost && !isEgg && mood !== "sick"
+  readonly property bool dancing: music && animated && !calm && !asleep && !isGhost && !isEgg && mood !== "sick"
 
   property real danceHop: 0        // 0..1, one impulse per beat
   property real danceLean: 1       // -1/1, flips every other beat
@@ -266,7 +283,7 @@ Item {
 
   // Idle joy: a delighted creature hops on its own every few seconds.
   Timer {
-    running: root.animated && root.mood === "ecstatic"
+    running: root.animated && !root.calm && root.mood === "ecstatic"
     interval: (root.smooth ? 2400 : 13000) + Math.random() * (root.smooth ? 2000 : 9000)
     repeat: true
     onTriggered: root.jump()
@@ -284,6 +301,148 @@ Item {
 
   Behavior on bodyScale { NumberAnimation { duration: 900; easing.type: Easing.OutBack } }
   Behavior on tint { ColorAnimation { duration: 700 } }
+
+  // -------------------------------------------------------------- hatching
+  //
+  // The one authored moment in a creature's life. The panel calls
+  // `crackOpen()`, which knocks three times from inside, runs a crack across
+  // the shell and then hands back so the hatch can be committed. The stage
+  // change then calls `revealHatch()`, which throws the two halves apart and
+  // pops the baby out. Panel-only: at bar size a burst of sparkles says it.
+  //
+  // The shell is cut from the static egg (no breathing), so its paths are
+  // built once per size instead of on every frame of the animation.
+
+  property real crack: 0          // 0..1 how far the crack has run
+  property real shake: 0          // extra egg tilt while it knocks, degrees
+  property real shell: 0          // 0..1 halves flying apart; hidden at rest
+  property real pop: 1            // body scale while it climbs out
+  property var crackDone: null
+  readonly property bool hatching: crackAnim.running || revealAnim.running || calmReveal.running
+
+  function crackOpen(done) {
+    if (hatching || !isEgg) return false
+    if (calm) { if (done) Qt.callLater(done); return true }
+    crackDone = done || null
+    crackAnim.restart()
+    return true
+  }
+
+  function revealHatch() {
+    crackAnim.stop()
+    crack = 0
+    shake = 0
+    // Set before the next frame so the baby never flashes in at full size.
+    if (calm) { calmReveal.restart(); return }
+    shell = 0.001
+    pop = 0.15
+    blink = 0.06
+    revealAnim.restart()
+  }
+
+  function cubicAt(a, b, c, d, t) {
+    var m = 1 - t
+    return Qt.point(m * m * m * a.x + 3 * m * m * t * b.x + 3 * m * t * t * c.x + t * t * t * d.x,
+                    m * m * m * a.y + 3 * m * m * t * b.y + 3 * m * t * t * c.y + t * t * t * d.y)
+  }
+
+  // The zigzag and the two closed halves either side of it, sampled from the
+  // same two cubics that draw the egg below.
+  readonly property var shellGeometry: {
+    var cx = 50 * u, cy = 50 * u, w = 46 * u, h = 58 * u
+    var top = Qt.point(cx, cy - h / 2), bottom = Qt.point(cx, cy + h / 2)
+    var left = [], right = [], steps = 24
+    for (var i = 0; i <= steps; i++) {
+      left.push(cubicAt(top, Qt.point(cx - w * 0.40, cy - h * 0.44), Qt.point(cx - w * 0.62, cy + h * 0.34), bottom, i / steps))
+      right.push(cubicAt(bottom, Qt.point(cx + w * 0.62, cy + h * 0.34), Qt.point(cx + w * 0.40, cy - h * 0.44), top, i / steps))
+    }
+    // Just below the middle, where an egg is widest and breaks most readily.
+    var y0 = cy + h * 0.04
+    function crossing(list) {
+      for (var k = 0; k < list.length - 1; k++) {
+        var a = list[k], b = list[k + 1]
+        if ((a.y - y0) * (b.y - y0) <= 0 && a.y !== b.y) {
+          var t = (y0 - a.y) / (b.y - a.y)
+          return { i: k, p: Qt.point(a.x + (b.x - a.x) * t, y0) }
+        }
+      }
+      return { i: 0, p: list[0] }
+    }
+    var L = crossing(left), R = crossing(right)
+    var teeth = 6, amp = h * 0.055, zig = []
+    for (var z = 0; z <= teeth; z++)
+      zig.push(Qt.point(L.p.x + (R.p.x - L.p.x) * z / teeth,
+                        y0 + (z === 0 || z === teeth ? 0 : (z % 2 ? -amp : amp))))
+    return {
+      crack: zig,
+      upper: left.slice(0, L.i + 1).concat(zig).concat(right.slice(R.i + 1)),
+      lower: [L.p].concat(left.slice(L.i + 1)).concat(right.slice(1, R.i + 1)).concat(zig.slice().reverse()),
+      pivotX: cx,
+      pivotY: (cy - h / 2 + y0) / 2,
+      x1: cx - w / 2, y1: cy - h / 2, x2: cx + w / 2, y2: cy + h / 2
+    }
+  }
+
+  // The part of the zigzag that has opened so far.
+  readonly property var crackPath: {
+    var zig = shellGeometry.crack
+    var p = Math.max(0, Math.min(1, crack)) * (zig.length - 1)
+    var whole = Math.floor(p)
+    var out = zig.slice(0, whole + 1)
+    if (whole < zig.length - 1 && p > whole) {
+      var a = zig[whole], b = zig[whole + 1], f = p - whole
+      out.push(Qt.point(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f))
+    }
+    return out
+  }
+
+  // Which way the lid goes flying. Seeded, so every egg breaks its own way.
+  readonly property real flingDir: seed % 2 === 0 ? -1 : 1
+
+  SequentialAnimation {
+    id: crackAnim
+    // Three knocks from inside, each harder, each running the crack further.
+    NumberAnimation { target: root; property: "shake"; to: -5; duration: 70; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "shake"; to: 5; duration: 110; easing.type: Easing.InOutSine }
+    NumberAnimation { target: root; property: "shake"; to: 0; duration: 80; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "crack"; to: 0.34; duration: 110; easing.type: Easing.OutQuad }
+    PauseAnimation { duration: 150 }
+    NumberAnimation { target: root; property: "shake"; to: -8; duration: 70; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "shake"; to: 8; duration: 110; easing.type: Easing.InOutSine }
+    NumberAnimation { target: root; property: "shake"; to: 0; duration: 80; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "crack"; to: 0.7; duration: 110; easing.type: Easing.OutQuad }
+    PauseAnimation { duration: 130 }
+    NumberAnimation { target: root; property: "shake"; to: -12; duration: 60; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "shake"; to: 12; duration: 100; easing.type: Easing.InOutSine }
+    NumberAnimation { target: root; property: "shake"; to: -5; duration: 80; easing.type: Easing.InOutSine }
+    NumberAnimation { target: root; property: "shake"; to: 0; duration: 70; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "crack"; to: 1; duration: 90; easing.type: Easing.OutQuad }
+    // The held breath before it breaks.
+    PauseAnimation { duration: 200 }
+    // Handed back on the next turn of the event loop: committing the hatch
+    // starts the reveal, which must not stop this animation from inside it.
+    ScriptAction { script: { var done = root.crackDone; root.crackDone = null; if (done) Qt.callLater(done) } }
+  }
+
+  // Calm motion's hatch: the baby simply fades in where the egg was.
+  NumberAnimation { id: calmReveal; target: root; property: "opacity"; from: 0; to: 1; duration: 420; easing.type: Easing.OutCubic }
+
+  SequentialAnimation {
+    id: revealAnim
+    ParallelAnimation {
+      NumberAnimation { target: root; property: "shell"; from: 0.001; to: 0.999; duration: 900; easing.type: Easing.OutCubic }
+      SequentialAnimation {
+        PauseAnimation { duration: 60 }
+        NumberAnimation { target: root; property: "pop"; to: 1; duration: 560; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
+      }
+      SequentialAnimation {
+        PauseAnimation { duration: 520 }
+        // Its first look at the world: one slow opening, then normal blinks.
+        NumberAnimation { target: root; property: "blink"; to: 1; duration: 320; easing.type: Easing.OutCubic }
+      }
+    }
+    ScriptAction { script: { root.shell = 0; root.jump() } }
+  }
 
   // ---------------------------------------------------------- derived pose
 
@@ -313,8 +472,8 @@ Item {
 
   readonly property real rigX: (isGhost ? sway * 4 : sway * 1.2) * u + danceSlide
   readonly property real rigY: (isGhost ? bob * 5 : bob * 1.6) * u - hop * 16 * u - danceRise - walkBounce
-  readonly property real rigScaleX: 1 + breathe * 0.020 - hop * 0.06 + danceHop * 0.05
-  readonly property real rigScaleY: 1 - breathe * 0.022 + hop * 0.10 - danceHop * 0.05
+  readonly property real rigScaleX: (1 + breathe * 0.020 - hop * 0.06 + danceHop * 0.05) * pop
+  readonly property real rigScaleY: (1 - breathe * 0.022 + hop * 0.10 - danceHop * 0.05) * pop
   readonly property real rigAngle: spinAngle
                                  + sway * 2.5
                                  + (dancing && danceMove === 1 ? danceLean * 7 : 0)
@@ -330,15 +489,51 @@ Item {
     height: 6 * root.u
     radius: height / 2
     x: root.bodyCx - width / 2
-    y: 85 * root.u
+    // Under the feet at every size: a baby's feet sit higher than an adult's.
+    y: (root.isEgg ? 76 : 85 - (1 - root.bodyScale) * 34) * root.u
     color: Qt.rgba(0, 0, 0, 0.17)
     // Outside the rig: a shadow does not hop. It tightens instead, and does so
     // through a transform so the hop costs no layout.
-    opacity: 1 - root.hop * 0.5
+    opacity: (1 - root.hop * 0.5) * Math.min(1, root.pop)
     transform: Scale {
       origin.x: contactShadow.width / 2
       origin.y: contactShadow.height / 2
       xScale: 1 - root.hop * 0.32
+    }
+  }
+
+  // ---- broken shell: cup --------------------------------------------------
+  // Behind the rig: the baby grows up out of the bottom half and stands in
+  // front of it, instead of being seen through a fading shell.
+
+  Item {
+    visible: root.detail && root.shell > 0 && root.shell < 1
+    anchors.fill: parent
+
+    // It stays put until the baby is out, then sinks away.
+    Shape {
+      anchors.fill: parent
+      preferredRendererType: Shape.CurveRenderer
+      opacity: 1 - Math.max(0, (root.shell - 0.6) / 0.4)
+      transform: Translate { y: Math.max(0, root.shell - 0.4) * 10 * root.u }
+
+      ShapePath {
+        strokeWidth: 0
+        fillGradient: LinearGradient {
+          x1: root.shellGeometry.x1; y1: root.shellGeometry.y1
+          x2: root.shellGeometry.x2; y2: root.shellGeometry.y2
+          GradientStop { position: 0.0; color: Qt.lighter(root.effectiveTint, 1.55) }
+          GradientStop { position: 1.0; color: Qt.lighter(root.effectiveTint, 1.15) }
+        }
+        PathPolyline { path: root.shellGeometry.lower }
+      }
+      ShapePath {
+        strokeColor: Qt.darker(root.effectiveTint, 1.25)
+        strokeWidth: Math.max(1, 2.2 * root.u)
+        fillColor: "transparent"
+        joinStyle: ShapePath.RoundJoin
+        PathPolyline { path: root.shellGeometry.crack }
+      }
     }
   }
 
@@ -413,7 +608,7 @@ Item {
     readonly property real cx: 50 * root.u
     readonly property real cy: 50 * root.u
 
-    rotation: root.sway * 4
+    rotation: root.sway * 4 + root.shake
     transformOrigin: Item.Bottom
 
     Shape {
@@ -471,12 +666,29 @@ Item {
       color: Qt.rgba(1, 1, 1, 0.45)
       rotation: -24
     }
+
+    // The crack, drawn as far as it has run.
+    Shape {
+      visible: root.crack > 0
+      anchors.fill: parent
+      preferredRendererType: Shape.CurveRenderer
+      ShapePath {
+        strokeColor: Qt.darker(root.effectiveTint, 1.7)
+        strokeWidth: Math.max(1.2, 1.8 * root.u)
+        fillColor: "transparent"
+        capStyle: ShapePath.RoundCap
+        joinStyle: ShapePath.RoundJoin
+        PathPolyline { path: root.crackPath }
+      }
+    }
   }
 
   // The egg rocks harder the closer it gets to hatching. It is the only cue
   // that something is about to happen, so it has to be visible from the bar.
   SequentialAnimation on rotation {
-    running: root.animated && root.isEgg
+    running: root.animated && root.isEgg && !root.hatching
+    // Stopping mid-rock would otherwise leave the hatchling standing crooked.
+    onRunningChanged: if (!running) root.rotation = 0
     loops: Animation.Infinite
     NumberAnimation { to:  2.5; duration: 260; easing.type: Easing.InOutSine }
     NumberAnimation { to: -2.5; duration: 260; easing.type: Easing.InOutSine }
@@ -616,7 +828,7 @@ Item {
 
   // baby: hair tuft
   Rectangle {
-    visible: root.detail && root.stageKey === "baby"
+    visible: root.detail && root.stageKey === "baby" && !root.costumeHat
     width: 5.5 * root.u
     height: 12 * root.u
     radius: width / 2
@@ -629,7 +841,7 @@ Item {
 
   // kid: antenna with a bobbing bead
   Item {
-    visible: root.detail && root.stageKey === "kid"
+    visible: root.detail && root.stageKey === "kid" && !root.costumeHat
     anchors.fill: parent
     Rectangle {
       width: 2.4 * root.u
@@ -654,7 +866,7 @@ Item {
 
   // teen: horns
   Repeater {
-    model: root.detail && root.stageKey === "teen" ? 2 : 0
+    model: root.detail && root.stageKey === "teen" && !root.costumeHat ? 2 : 0
     Shape {
       id: horn
       required property int index
@@ -679,7 +891,7 @@ Item {
 
   // adult + elder: crown
   Repeater {
-    model: root.detail && (root.stageKey === "adult" || root.stageKey === "elder") ? 3 : 0
+    model: root.detail && (root.stageKey === "adult" || root.stageKey === "elder") && !root.costumeHat ? 3 : 0
     Shape {
       id: spike
       required property int index
@@ -700,7 +912,7 @@ Item {
 
   // elder: a halo, because two weeks of survival deserves one
   Rectangle {
-    visible: root.detail && root.stageKey === "elder"
+    visible: root.detail && root.stageKey === "elder" && !root.costumeHat
     width: 30 * root.u
     height: 7 * root.u
     radius: height / 2
@@ -950,12 +1162,54 @@ Item {
     ink: root.inkColor
     accent: root.glowColor
 
-    // An egg wears nothing, a ghost has no hands, and a sleeping creature puts
-    // its things down — except the nightcap it went to bed in.
-    activity: (root.isEgg || root.isGhost) ? ""
-            : (root.asleep && root.activity !== "away") ? ""
-            : root.activity
+    activity: root.gearActivity
+    hat: root.costumeHat ? root.costume : ""
     music: root.music && !root.isEgg && !root.isGhost
   }
+  }
+
+  // ---- broken shell: lid -------------------------------------------------
+  // In front of the rig and outside it, so the lid keeps its size while the
+  // baby pops, and flies past the face rather than behind it.
+
+  Item {
+    visible: root.detail && root.shell > 0 && root.shell < 1
+    anchors.fill: parent
+
+    // The top is flung up and off to one side, tumbling as it goes.
+    Shape {
+      anchors.fill: parent
+      preferredRendererType: Shape.CurveRenderer
+      opacity: 1 - Math.max(0, (root.shell - 0.4) / 0.6)
+      transform: [
+        Rotation {
+          origin.x: root.shellGeometry.pivotX
+          origin.y: root.shellGeometry.pivotY
+          angle: root.flingDir * root.shell * 150
+        },
+        Translate {
+          x: root.flingDir * root.shell * 30 * root.u
+          y: -Math.sin(Math.min(1, root.shell * 1.4) * Math.PI) * 26 * root.u + root.shell * 12 * root.u
+        }
+      ]
+
+      ShapePath {
+        strokeWidth: 0
+        fillGradient: LinearGradient {
+          x1: root.shellGeometry.x1; y1: root.shellGeometry.y1
+          x2: root.shellGeometry.x2; y2: root.shellGeometry.y2
+          GradientStop { position: 0.0; color: Qt.lighter(root.effectiveTint, 1.55) }
+          GradientStop { position: 1.0; color: Qt.lighter(root.effectiveTint, 1.15) }
+        }
+        PathPolyline { path: root.shellGeometry.upper }
+      }
+      ShapePath {
+        strokeColor: Qt.darker(root.effectiveTint, 1.25)
+        strokeWidth: Math.max(1, 2.2 * root.u)
+        fillColor: "transparent"
+        joinStyle: ShapePath.RoundJoin
+        PathPolyline { path: root.shellGeometry.crack }
+      }
+    }
   }
 }

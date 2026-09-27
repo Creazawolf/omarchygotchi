@@ -142,7 +142,7 @@ Item {
       var s = String(t.title)
       if (root.busyGlyphs.indexOf(s.charAt(0)) < 0) continue
       var rest = s.slice(1).replace(/^[\s·|—-]+/, "")
-      if (rest.length > 0) return { task: rest, appId: String(t.appId || "") }
+      if (rest.length > 0) return { task: rest, appId: String(t.appId || ""), toplevel: t }
     }
     return null
   }
@@ -193,13 +193,85 @@ Item {
 
   signal agentFinished(int seconds)
 
+  // The window and task of the run in flight, remembered past its end: once
+  // the spinner stops, the title no longer says which window it was.
+  property var lastAgentToplevel: null
+  property string lastAgentTask: ""
+
+  onAgentWindowChanged: {
+    if (!agentWindow) return
+    lastAgentToplevel = agentWindow.toplevel
+    lastAgentTask = String(agentWindow.task)
+  }
+
   onAgentBusyChanged: {
     if (agentBusy) {
       agentBusySince = Date.now()
+      clearWaiting()
     } else if (agentBusySince > 0) {
       var seconds = Math.round((Date.now() - agentBusySince) / 1000)
       agentBusySince = 0
+      if (seconds >= 20) markWaiting(lastAgentToplevel, lastAgentTask)
       if (seconds >= 45) agentFinished(seconds)
+    }
+  }
+
+  // ------------------------------------------------------ waiting on you
+  //
+  // A finished run you have not looked at yet. It ends the moment you focus
+  // the agent's window (or, when the window is unknown, any terminal or
+  // editor), when the agent starts working again, or after half an hour.
+  // Claude Code's Stop and Notification hooks can set it directly over IPC,
+  // which is more reliable than reading spinners out of window titles.
+
+  property bool agentWaiting: false
+  property var waitingToplevel: null
+  property string waitingTask: ""
+
+  function markWaiting(toplevel, task) {
+    if (!enabled) return
+    // Already looking at it: nothing to wait for. Without a known window, a
+    // focused terminal or editor is the best guess that you are.
+    var active = ToplevelManager.activeToplevel
+    if (toplevel && active === toplevel) return
+    if (!toplevel && active && ["terminal", "editor"].indexOf(matchRule(active.appId)) >= 0) return
+    waitingToplevel = toplevel || null
+    waitingTask = String(task || "")
+    agentWaiting = true
+    waitingExpiry.restart()
+  }
+
+  function clearWaiting() {
+    agentWaiting = false
+    waitingToplevel = null
+    waitingTask = ""
+    waitingExpiry.stop()
+  }
+
+  // Brings the waiting agent's window forward. False when the window is not
+  // known, e.g. when the wait came from a hook rather than a title.
+  function goToWaiting() {
+    var t = waitingToplevel
+    if (!t || typeof t.activate !== "function") return false
+    t.activate()
+    clearWaiting()
+    return true
+  }
+
+  Timer { id: waitingExpiry; interval: 30 * 60000; onTriggered: root.clearWaiting() }
+
+  onEnabledChanged: if (!enabled) clearWaiting()
+
+  Connections {
+    target: ToplevelManager
+    function onActiveToplevelChanged() {
+      if (!root.agentWaiting) return
+      var active = ToplevelManager.activeToplevel
+      if (!active) return
+      var looked = root.waitingToplevel
+        ? active === root.waitingToplevel
+        : ["terminal", "editor"].indexOf(root.matchRule(active.appId)) >= 0
+      if (looked) root.clearWaiting()
     }
   }
 

@@ -24,14 +24,15 @@ Column {
     text: "THE COMMUNITY PARK"
     color: root.foreground
     font.bold: true
-    font.pixelSize: Style.font.body
+    font.letterSpacing: 1
+    font.family: Style.font.family; font.pixelSize: Style.font.body
   }
   Text {
     width: parent.width
     text: "Meet real creatures from other Omarchy desktops. Share playdates, make friends, and let your companion wander."
     wrapMode: Text.WordWrap
     color: root.foreground
-    font.pixelSize: Style.font.caption
+    font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
   }
   Rectangle {
     width: parent.width; height: Style.space(36)
@@ -42,7 +43,7 @@ Column {
       anchors.fill: parent; anchors.margins: Style.space(8)
       text: root.social ? root.social.serverUrl : ""
       color: root.foreground
-      font.pixelSize: Style.font.caption
+      font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
       clip: true
       selectByMouse: true
       enabled: root.social && !root.social.optedIn && !root.social.busy && !root.social.disconnectRequested
@@ -85,19 +86,19 @@ Column {
     visible: root.social && root.social.cloudRoaming
     text: "Auto-roam finds a playdate about every six hours when a partner is available. Offline adventures let your creature join while your computer is off, for up to seven days after your last connection."
     wrapMode: Text.WordWrap; color: root.foreground; opacity: 0.7
-    font.pixelSize: Style.font.caption
+    font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
   }
   Text {
     width: parent.width
     text: root.social ? root.social.status : "Starting community service…"
     textFormat: Text.PlainText; wrapMode: Text.WordWrap
-    color: Color.accent; font.pixelSize: Style.font.caption
+    color: Color.accent; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
   }
   Text {
     width: parent.width
     text: "Connecting shares your creature’s name, appearance, stage and availability with this server. Friend requests are sent only when you choose. Desktop activity stays on your system."
     wrapMode: Text.WordWrap; color: root.foreground; opacity: 0.65
-    font.pixelSize: Style.font.caption
+    font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
   }
   StoryPanel {
     id: stories
@@ -119,11 +120,11 @@ Column {
       id: section
       required property var modelData
       width: root.width; spacing: Style.space(5)
-      Text { text: section.modelData.title; color: root.foreground; font.bold: true; font.pixelSize: Style.font.caption }
+      Text { text: section.modelData.title; color: root.foreground; font.bold: true; font.letterSpacing: 1; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
       Text {
         visible: (root.communityData[section.modelData.key] || []).length === 0
         width: parent.width; wrapMode: Text.WordWrap
-        text: section.modelData.empty; color: root.foreground; opacity: 0.6; font.pixelSize: Style.font.caption
+        text: section.modelData.empty; color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
       }
       Repeater {
         model: root.communityData[section.modelData.key] || []
@@ -134,7 +135,7 @@ Column {
           Text {
             width: parent.width; elide: Text.ElideRight
             text: person.modelData.name + (person.modelData.online ? " · online" : " · away")
-            textFormat: Text.PlainText; color: root.foreground; font.pixelSize: Style.font.body
+            textFormat: Text.PlainText; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body
           }
           Flow {
             width: parent.width; spacing: Style.space(5)
@@ -161,12 +162,12 @@ Column {
       }
     }
   }
-  Text { text: "MOMENTS · LAST 30 DAYS"; color: root.foreground; font.bold: true; font.pixelSize: Style.font.caption }
+  Text { text: "MOMENTS · LAST 30 DAYS"; color: root.foreground; font.bold: true; font.letterSpacing: 1; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
   Text {
     width: parent.width; wrapMode: Text.WordWrap
     visible: (root.communityData.visits || []).length === 0
     text: "The park may be quiet. When another real creature is available, your first shared story can begin."
-    color: root.foreground; opacity: 0.6; font.pixelSize: Style.font.caption
+    color: root.foreground; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
   }
   Repeater {
     model: root.communityData.visits || []
@@ -177,12 +178,12 @@ Column {
       Text {
         width: parent.width; wrapMode: Text.WordWrap
         text: "You and " + visit.modelData.creature.name + " " + visit.modelData.activity + ".\n" + new Date(visit.modelData.at * 1000).toLocaleString(Qt.locale("en_US"), "MMM d, HH:mm")
-        textFormat: Text.PlainText; color: root.foreground; font.pixelSize: Style.font.caption
+        textFormat: Text.PlainText; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
       }
       Text {
         width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
         text: visit.modelData.scene ? "Kept: " + visit.modelData.scene.keepsake + "." : ""
-        color: Color.accent; font.pixelSize: Style.font.caption
+        color: Color.accent; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall
       }
       Flow {
         width: parent.width; spacing: Style.space(5)
@@ -192,6 +193,8 @@ Column {
         }
         Button {
           text: "Add friend"; bordered: true; foreground: root.foreground
+          visible: !(root.communityData.friends || []).some(function(p) { return p.id === visit.modelData.creature.id })
+                   && !(root.communityData.outgoing || []).some(function(p) { return p.id === visit.modelData.creature.id })
           enabled: root.social && root.social.optedIn && !root.social.busy && !root.social.disconnectRequested
           onClicked: root.act("request", visit.modelData.creature.id)
         }

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 import "Sim.js" as Sim
 import "Messages.js" as Msg
 
@@ -52,6 +53,8 @@ Item {
   readonly property bool careNotifications: configBool("careNotifications", false)
   readonly property bool awarenessEnabled: configBool("awareness", true)
   readonly property bool contextChatterEnabled: configBool("contextChatter", true)
+  readonly property bool seasonalEnabled: configBool("seasonal", true)
+  readonly property bool calmMotion: configBool("calmMotion", false)
 
   function configValue(key, fallback) {
     var v = config ? config[key] : undefined
@@ -242,11 +245,13 @@ Item {
   }
 
   function rename(name) {
-    var clean = String(name || "").trim().slice(0, 20)
+    var clean = Sim.cleanName(name)
     if (!clean || !root.pet) return "invalid"
     var next = Sim.clone(root.pet)
     next.name = clean
+    next.named = true
     commit(next, true)
+    root.reacted("rename", "heart", "named", true)
     return clean
   }
 
@@ -389,7 +394,13 @@ Item {
     return true
   }
 
+  property real lastCheerAt: 0
+
   function celebrateAgent(seconds) {
+    // A hook and the title watcher can both report the same finish; one cheer
+    // is plenty.
+    if (Date.now() - root.lastCheerAt < 10000) return
+    root.lastCheerAt = Date.now()
     // The creature cheers on every screen whether or not it says anything.
     root.reacted("watch", "star", "", true)
     if (seconds < 120) return
@@ -402,6 +413,40 @@ Item {
     // more than that and a full album turns into a notification storm.
     if (Math.random() > 0.14) return
     contextNotify("track", 45 * 60000, 0, trackName)
+  }
+
+  // ----------------------------------------------------------- theme watch
+  //
+  // Switching Omarchy themes repaints the creature (its tint leans toward the
+  // accent), and it notices, once per switch. The first seconds after start-up
+  // are the theme loading, not you changing it, so they only set the baseline.
+
+  property color seenAccent: "transparent"
+  property bool themeSettled: false
+
+  Timer {
+    interval: 5000
+    running: root.ready && !root.themeSettled
+    onTriggered: { root.seenAccent = Color.accent; root.themeSettled = true }
+  }
+
+  // A theme switch can touch the accent more than once; react to where it
+  // lands, not to each step.
+  Timer {
+    id: themeDebounce
+    interval: 700
+    onTriggered: {
+      if (!root.themeSettled || Qt.colorEqual(Color.accent, root.seenAccent)) return
+      root.seenAccent = Color.accent
+      var p = root.pet
+      if (!p || Sim.isDead(p) || p.asleep || Sim.stage(p, Date.now()) === "egg") return
+      root.reacted("theme", "sparkle", "newTheme", true)
+    }
+  }
+
+  Connections {
+    target: Color
+    function onAccentChanged() { themeDebounce.restart() }
   }
 
   // Uninterrupted focus, measured by the awareness mode rather than by the
@@ -511,6 +556,24 @@ Item {
 
     function json(): string { return root.pet ? JSON.stringify(root.pet) : "{}" }
 
+    // For agent CLIs that can run a command when they stop or need you. In
+    // Claude Code's settings.json:
+    //   "hooks": {
+    //     "Stop":         [{"hooks": [{"type": "command", "command": "omarchy-shell tamagotchi cheer"}]}],
+    //     "Notification": [{"hooks": [{"type": "command", "command": "omarchy-shell tamagotchi waiting"}]}]
+    //   }
+    function cheer(): string {
+      if (!root.awarenessEnabled) return "awareness off"
+      senses.markWaiting(null, "")
+      root.celebrateAgent(0)
+      return "ok"
+    }
+    function waiting(): string {
+      if (!root.awarenessEnabled) return "awareness off"
+      senses.markWaiting(null, "")
+      return "ok"
+    }
+
     // What the creature currently believes about your session. Handy when a
     // new app isn't being recognised and you want to see what it saw.
     function sense(): string {
@@ -521,6 +584,7 @@ Item {
         + " · music " + (senses.musicPlaying ? (senses.trackArtist + " - " + senses.trackTitle) : "no")
         + " · beat " + senses.beatMs + "ms"
         + " · agent " + (senses.agentBusy ? ("busy: " + senses.agentTask) : (senses.agentPresent ? "idle" : "no"))
+        + (senses.agentWaiting ? " · waiting on you" : "")
         + " · away " + (senses.away ? "yes" : "no")
         + " · title " + (senses.title || "-")
     }
