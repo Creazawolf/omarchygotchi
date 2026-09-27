@@ -610,6 +610,7 @@ var UI = {
     "nextFind": "Find a playmate",
     "careOpen": "A little care",
     "careClose": "Close care",
+    "portrait": "Portrait",
     "growsInto": "{stage} in {time}",
     "hatchIt": "Hatch it",
     "nameFirst": "It hatched! What will you call it?",

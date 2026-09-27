@@ -29,7 +29,19 @@ ShellRoot {
     property bool panelOpen: false
     property string status: "Isolated test fixture"
     property string serverUrl: "http://127.0.0.1:8787"
+    property bool friendCodes: true
+    property var park: ({week: 2, now: 1})
+    property string inviteCode: ""
+    property real inviteExpires: 0
     function call() {}
+    function connectTo() {}
+    function disconnect() {}
+    function setRoaming() {}
+    function setOfflineVisits() {}
+    function createInvite() {}
+    function revokeInvite() {}
+    function acceptInvite() {}
+    function copyText() {}
   }
   Window {
     visible: true; width: 820; height: 980; color: "#1c232d"

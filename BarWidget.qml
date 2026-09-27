@@ -290,7 +290,8 @@ BarWidget {
         stageKey: root.visitor ? root.visitor.stage : "adult"
         bodyScale: Sim.stageScale(stageKey) * 0.55 + 0.55
         mood: "happy"
-        tint: Qt.hsla(Sim.seededUnit(seed, 11), 0.52, 0.62, 1)
+        // Leans toward the accent like everyone else on this desktop.
+        tint: Qt.tint(Qt.hsla(Sim.seededUnit(seed, 11), 0.52, 0.62, 1), Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.18))
         inkColor: Color.bar.background
       }
 

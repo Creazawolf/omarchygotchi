@@ -43,9 +43,17 @@ try {
  assert.deepEqual(other.families,family.families);
  assert.equal(other.bonds[0].encounters,6);
  execFileSync('python3',['-c',"import sys,json; sys.path.insert(0,'../community'); from client import validate_snapshot; validate_snapshot(json.load(sys.stdin),'sync')"],{input:JSON.stringify(other)});
+ // A friend code redeemed by a third creature: friends at once, counted in the park.
+ const profile={name:'TestMochi',seed:456,stage:'adult',discover:true};
+ const c=await call('register',profile);users.push({...c,profile});await call('sync',profile,c.token);
+ const code=(await call('invite-create',{},a.token)).invite.code;
+ const redeemed=await call('invite-accept',{code},c.token);
+ assert.equal(redeemed.friends[0].id,a.id);
+ assert.ok(redeemed.park.week>=2);
+ execFileSync('python3',['-c',"import sys,json; sys.path.insert(0,'../community'); from client import validate_snapshot; validate_snapshot(json.load(sys.stdin),'invite-accept')"],{input:JSON.stringify(redeemed)});
  await call('block',{target:b.id},a.token);
  assert.equal((await call('sync',b.profile,b.token)).friends.length,0);
- console.log('Real Cloudflare runtime: registration, visible visits, friendship, offline cron, mutual romance, shared egg consent, Python validation, blocking, and deletion passed.');
+ console.log('Real Cloudflare runtime: registration, visible visits, friendship, offline cron, mutual romance, shared egg consent, friend codes, park presence, Python validation, blocking, and deletion passed.');
 } finally {
  for(const u of users) await call('delete',{},u.token);
 }

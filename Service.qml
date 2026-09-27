@@ -568,6 +568,16 @@ Item {
       root.celebrateAgent(0)
       return "ok"
     }
+    // Your friend code, for pasting into a chat. Creates one when there is
+    // none yet; the new code is ready a moment later.
+    function invite(): string {
+      if (!community.optedIn) return "Join the park first: Community → Join the park."
+      if (!community.friendCodes) return "This community server has no friend codes."
+      if (community.inviteCode !== "") return community.inviteCode
+      community.createInvite()
+      return "Creating your friend code. Run this again in a moment."
+    }
+
     function waiting(): string {
       if (!root.awarenessEnabled) return "awareness off"
       senses.markWaiting(null, "")

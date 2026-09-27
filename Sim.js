@@ -542,6 +542,43 @@ function act(state, action, nowMs) {
   return careAction(state, action, nowMs)
 }
 
+// ------------------------------------------------------------------ traits
+//
+// What makes a creature look like itself beyond its colour: a body shape,
+// ears, a marking, eyes and cheeks, all drawn from its seed. Every option is
+// equally likely, so there is nothing rare to chase, only creatures that look
+// like themselves. The look is a pure function of the public seed, so every
+// desktop that meets a creature draws it the same way.
+
+var SHAPES = ["round", "bean", "chunky"]
+var EARS = ["none", "round", "pointy", "floppy"]
+var MARKINGS = ["none", "spots", "stripes", "patch", "freckles"]
+var EYES = ["round", "big", "narrow", "sparkle"]
+var CHEEKS = ["#f08fa8", "#f5a37a", "#c9a0f0"]
+
+// `ownSeed` gives a family's child eyes of its own; everything else comes
+// from the parent whose seed it carries (its colour comes from the other).
+function traits(seed, ownSeed) {
+  var s = Number(seed) >>> 0
+  var t = {
+    shape: seededPick(SHAPES, s, 101),
+    ears: seededPick(EARS, s, 103),
+    marking: seededPick(MARKINGS, s, 107),
+    eyes: seededPick(EYES, s, 109),
+    cheek: seededPick(CHEEKS, s, 113),
+    side: hashSeed(s, 127) % 2 === 0 ? -1 : 1
+  }
+  var own = Number(ownSeed) >>> 0
+  if (own) t.eyes = seededPick(EYES, own, 109)
+  return t
+}
+
+// A number from a server id (hex), for seeding a child's own features.
+function seedFromId(id) {
+  var n = parseInt(String(id || "").slice(0, 8), 16)
+  return isFinite(n) ? (n >>> 0) : 0
+}
+
 // Seasonal dress-up, by the local calendar. Purely cosmetic: nothing in the
 // simulation reads it, and it can be switched off in the widget settings.
 function season(nowMs) {

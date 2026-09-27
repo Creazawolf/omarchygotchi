@@ -157,9 +157,30 @@ Panel {
   readonly property var nextStep: {
     if (!social || !pet || dead || activeVisit) return null
     if (!social.optedIn) return { label: strings.nextPark, ready: true, kind: "park" }
-    var friend = closestBond && friendIds.indexOf(closestBond.creature.id) >= 0 ? closestBond.creature : null
+    // A friend made by code may have no shared history yet; they still count.
+    var friend = closestBond && friendIds.indexOf(closestBond.creature.id) >= 0 ? closestBond.creature
+               : ((social.snapshot && social.snapshot.friends) || [])[0] || null
     if (friend) return { label: Msg.format(strings.nextInvite, { friend: friend.name }), ready: socialReady, kind: "invite", target: friend.id }
     return { label: strings.nextFind, ready: socialReady, kind: "find" }
+  }
+
+  // ------------------------------------------------------------ portrait
+  //
+  // Your creature alone, as it is right now: its stage, its look, whatever it
+  // is wearing for what you are doing, in your theme's colours.
+  property bool portraitOpen: false
+  readonly property var portraitScene: pet ? ({ scene: "portrait", participants: [{
+    name: pet.name, seed: pet.seed, stage: stageKey,
+    mood: moodKey === "ecstatic" || moodKey === "happy" || moodKey === "neutral" ? moodKey : "happy",
+    activity: activityMode === "away" ? "idle" : activityMode, music: musicPlaying, costume: costume }] }) : null
+
+  function openPortrait() {
+    if (!pet) return
+    portraitOpen = true
+    var mode = musicPlaying && activityMode === "idle" ? "music" : activityMode
+    portrait.fileStem = pet.name
+    portrait.show(pet.name + ", " + Msg.modeLabel(mode === "away" ? "idle" : mode, language) + ".")
+    Qt.callLater(function() { scroll.contentY = Math.max(0, Math.min(portrait.y, scroll.contentHeight - scroll.height)) })
   }
 
   function takeNextStep() {
@@ -389,7 +410,7 @@ Panel {
 
     PanelKeyCatcher {
       id: keyCatcher
-      blocked: communityPanel.editing || namingCard.editing
+      blocked: communityPanel.editing || namingCard.editing || portrait.editing
       anchors.fill: parent
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
@@ -432,6 +453,14 @@ Panel {
           visible: root.communityTab
           social: root.host && root.host.service ? root.host.service.social : null
           foreground: root.fg
+          accent: root.tint
+          pet: root.pet
+          stageKey: root.stageKey
+          moodKey: root.moodKey
+          meTint: root.tint
+          skyTop: root.skyTop
+          skyBottom: root.skyBottom
+          calm: root.calm
         }
         Column {
           width: parent.width
@@ -987,9 +1016,11 @@ Panel {
             visible: root.householdChild !== null && !root.activeVisit
             x: parent.width * 0.60; y: parent.height - size * 0.92; size: Style.space(95)
             seed: root.householdChild ? root.householdChild.seed : 0
+            ownSeed: root.householdChild ? Sim.seedFromId(root.householdChild.id) : 0
             stageKey: root.householdChild ? root.householdChild.stage : "egg"
             bodyScale: Sim.stageScale(stageKey); mood: "happy"; animated: root.opened && visible
-            tint: Qt.hsla(Sim.seededUnit(root.householdChild ? root.householdChild.colorSeed : 0, 11), 0.52, 0.62, 1)
+            tint: Qt.tint(Qt.hsla(Sim.seededUnit(root.householdChild ? root.householdChild.colorSeed : 0, 11), 0.52, 0.62, 1),
+                          Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.18))
           }
         }
         // ------------------------------------------------ first moments
@@ -1142,6 +1173,13 @@ Panel {
               accent: root.tint
               onClicked: root.careExpanded = !root.careExpanded
             }
+            Button {
+              text: root.strings.portrait
+              bordered: true
+              foreground: root.fg
+              accent: root.tint
+              onClicked: { if (root.portraitOpen) root.portraitOpen = false; else root.openPortrait() }
+            }
           }
           // Why the next step is waiting, in the community's own words.
           Text {
@@ -1154,6 +1192,17 @@ Panel {
             font.family: Style.font.family
             font.pixelSize: Style.font.bodySmall
           }
+        }
+
+        KeepsakePreview {
+          id: portrait
+          visible: root.portraitOpen && !root.isEgg && !root.naming && !root.dead
+          width: parent.width
+          scene: root.portraitScene
+          label: "A PORTRAIT"
+          foreground: root.fg
+          accent: root.tint
+          onClosed: root.portraitOpen = false
         }
 
         // ------------------------------------------------------- the meters

@@ -12,6 +12,15 @@ class ValidationTests(unittest.TestCase):
         for mutation in [dict(friends=[p]*201),dict(visits=[{}]),dict(friends=[dict(p,seed=-1)]),dict(friends='bad')]:
             broken=copy.deepcopy(data);broken.update(mutation)
             with self.assertRaises(ValueError): validate_snapshot(broken,'sync')
+    def test_friend_codes_and_presence(self):
+        base=dict(id='b'*32,friends=[],incoming=[],outgoing=[],blocked=[],visits=[],capabilities=dict(friendCodes=True,presence=True))
+        clean=validate_snapshot(base|dict(park=dict(week=3,now=1),invite=dict(code='K7QF-M2XD',expires=1790000000)),'invite-create')
+        self.assertEqual(clean['park'],{'week':3,'now':1})
+        self.assertEqual(clean['invite']['code'],'K7QF-M2XD')
+        self.assertTrue(clean['capabilities']['friendCodes'])
+        self.assertIsNone(validate_snapshot(base,'sync')['invite'])
+        for broken in [dict(invite=dict(code='k7qf-m2xd',expires=1)),dict(invite=dict(code='K7QF-M2X0',expires=1)),dict(invite=dict(expires=-1)),dict(park=dict(week='3',now=1)),dict(park=[])]:
+            with self.assertRaises(ValueError): validate_snapshot(base|broken,'sync')
     def test_legacy_server_has_no_cloud_capabilities(self):
         data=dict(id='a'*16,friends=[],incoming=[],outgoing=[],blocked=[],visits=[])
         self.assertFalse(validate_snapshot(data,'sync')['capabilities']['serverRoaming'])

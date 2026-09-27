@@ -13,6 +13,12 @@ Open the creature to see what happened, who matters, and what might happen next.
 
 **Community** holds relationship details, the family album, and scene previews. Automatic roaming remains optional, around every six hours when a partner is available. Offline adventures are a separate opt-in with a seven-day renewable lease. An empty park stays empty.
 
+## Friend codes and the park
+
+**Bring a friend** creates a code like `K7QF-M2XD` (also `omarchy-shell tamagotchi invite`). Share it anywhere; whoever enters it becomes your friend at once, and if both creatures are free they meet at the gate for a first story. A code works for a week, several people can use it, and **New code** or **Turn off** retires it immediately. Blocks always win: a blocked creature cannot use your code.
+
+The park shows your friends first, then creatures you have met. Owners at their desk right now have awake creatures; the rest are napping. The line under the park counts other creatures seen this week and those in the park right now; it never says who.
+
 ## Romance and family
 
 Romance is optional for each friendship, with private choices until both owners allow it. It needs adult/elder friends and three encounters. Both owners can keep the friendship without romance. Sweethearts get dates, anniversary stories, and reunions based on their actual shared history.
@@ -24,13 +30,13 @@ After six encounters, sweethearts can **Plan a shared egg**:
 3. One shared child appears in both albums. It hatches after one day, becomes a kid at day three, a teen at day seven, and an adult at day fourteen.
 4. At its primary home, the growing child appears in the habitat. Both owners receive updated milestones and can visit the other parent through **Visit family**.
 
-Children inherit one parent’s markings and the other’s colour. They inherit a personality, with an occasional decoration-nibbling habit. They have no additional care meters. Each household can have only one pending or growing child, including children living with the other parent. The album holds up to 12 children per owner; there is no trading, rarity, or score reward. Adults remain in both albums. Historical parent portraits survive a parent’s profile deletion in the other owner’s family album.
+Children take one parent’s shape, ears and markings in the other parent’s colour, with eyes of their own. They inherit a personality, with an occasional decoration-nibbling habit. They have no additional care meters. Each household can have only one pending or growing child, including children living with the other parent. The album holds up to 12 children per owner; there is no trading, rarity, or score reward. Adults remain in both albums. Historical parent portraits survive a parent’s profile deletion in the other owner’s family album.
 
 ## Keep a moment
 
-Choose **Preview keepsake** on a recorded journal event or agreed family entry. Edit the caption and choose **Save image** for a 1200×750 PNG. The exported scene contains the actual recorded participants and appearance, or the shared child and parents. It does not capture your desktop. Pending egg proposals cannot be exported as completed milestones.
+Click a moment in the strip under the park, or **Keepsake** on an agreed family entry. **Portrait** on the Creature tab frames your own creature as it is right now, wearing whatever it wears for what you are doing. Edit the caption and choose **Save image** or **Copy image** for a 1200×750 PNG in your theme's colours. The exported scene contains the actual recorded participants and appearance, or the shared child and parents. It does not capture your desktop. Pending egg proposals cannot be exported as completed milestones.
 
-Images save to `~/.local/state/omarchy/tamagotchi-community/moment-….png`; the panel shows the exact path. Sharing to X or elsewhere is entirely your choice. No automatic posting or invented participants.
+Images save to `~/Pictures/Omarchygotchi/`; the panel shows the exact path. Sharing to X or elsewhere is entirely your choice. No automatic posting or invented participants.
 
 ## Gentle care
 
@@ -56,7 +62,7 @@ Settings live on the widget’s entry in `~/.config/omarchy/shell.json`. Explici
 
 ## Connection and upgrade
 
-Select **Connect** to join the configured community server. No multiplayer connection is made without opt-in. The public Cloudflare origin is provided in `CommunityDefaults.js`. Only the creature’s name, appearance seed, stage and availability are sent, along with explicit social actions. Credentials stay in private server-specific files, never command arguments.
+Select **Join the park** to connect to the configured community server; a different server can be set under **Park settings**. No multiplayer connection is made without opt-in. The public Cloudflare origin is provided in `CommunityDefaults.js`. Only the creature’s name, appearance seed, stage and availability are sent, along with explicit social actions. Credentials stay in private server-specific files, never command arguments.
 
 **The included public community server runs 3.0.** For your own community, deploy the Worker and apply its migrations; see [backend instructions](../cloudflare/README.md). A 2.x server continues to offer its original playdate/friendship features; unsupported romance/family controls stay hidden. The optional [Python server](../community/README.md) remains a legacy online-only alternative.
 

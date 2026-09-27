@@ -7,7 +7,7 @@ async function call(action,body={},token='') {
  const data=await r.json();assert.equal(r.status,200,JSON.stringify(data));return data;
 }
 try {
- const health=await fetch(base+'/health');assert.equal(health.status,200);assert.equal((await health.json()).version,'3.0.0');
+ const health=await fetch(base+'/health');assert.equal(health.status,200);assert.equal((await health.json()).version,'3.1.0');
  assert.equal((await fetch(base+'/__scheduled')).status,405,'Internal schedule trigger must not be publicly callable.');
  for(const name of ['Setup test Pixel','Setup test Bean']) {
   const profile={name,seed:987654,stage:'adult',discover:true,offlineVisits:false,autoRoam:false};

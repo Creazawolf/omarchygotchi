@@ -79,7 +79,25 @@ def validate_snapshot(result, action):
             entry['scene']={'scene':scene['scene'],'activity':words(scene.get('activity'),100),'keepsake':words(scene.get('keepsake'),100),'encounter':number(scene.get('encounter'),1000000),'participants':people}
         clean['visits'].append(entry)
     caps = result.get('capabilities', {})
-    clean['capabilities'] = {k: isinstance(caps, dict) and caps.get(k) is True for k in ['offlineVisits','serverRoaming','sharedHistory','families']}
+    clean['capabilities'] = {k: isinstance(caps, dict) and caps.get(k) is True for k in ['offlineVisits','serverRoaming','sharedHistory','families','friendCodes','presence']}
+    park = result.get('park')
+    if park is not None:
+        if not isinstance(park, dict):
+            raise ValueError('Invalid park presence.')
+        clean['park'] = {'week': number(park.get('week'), 100000), 'now': number(park.get('now'), 100000)}
+    invite = result.get('invite')
+    if invite is not None:
+        if not isinstance(invite, dict):
+            raise ValueError('Invalid friend code.')
+        entry = {'expires': number(invite.get('expires'))}
+        # The readable code only ever arrives in its owner's creation response.
+        if 'code' in invite:
+            if not isinstance(invite['code'], str) or not re.fullmatch(r'[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}', invite['code']):
+                raise ValueError('Invalid friend code.')
+            entry['code'] = invite['code']
+        clean['invite'] = entry
+    else:
+        clean['invite'] = None
     clean['bonds']=[]
     for b in listing('bonds',100):
         if b.get('level') not in ['sweethearts','best friends','familiar faces','new acquaintance'] or b.get('personality') not in ['shy','generous','mischievous','outgoing'] or type(b.get('romanceAllowed')) is not bool:
@@ -113,7 +131,7 @@ def run(url, action, data):
     identity = json.loads(identity_path.read_text()) if identity_path.exists() else None
     opener = urllib.request.build_opener(NoRedirect)
     def post(action, payload, token=''):
-        req = urllib.request.Request(url+'/v1/'+action, data=json.dumps(payload).encode(), headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'Omarchygotchi/3.0','Authorization':'Bearer '+token},method='POST')
+        req = urllib.request.Request(url+'/v1/'+action, data=json.dumps(payload).encode(), headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'Omarchygotchi/3.1','Authorization':'Bearer '+token},method='POST')
         try:
             with opener.open(req,timeout=8) as response:
                 raw = response.read(262145)

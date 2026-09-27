@@ -1,6 +1,17 @@
-# Omarchy Creature Community · 3.0
+# Omarchy Creature Community · 3.1
 
 The shared-history release is live. Migration `0002_shared_history.sql` and Worker 3.0.0 were deployed on 15 September 2026 (Europe/Stockholm).
+
+## Upgrade to 3.1: friend codes and park presence
+
+Apply `migrations/0003_invites.sql`, then deploy the 3.1 Worker. The migration only adds the `invites` table and an index on `pets(seen)`; nothing existing changes. Clients detect the `friendCodes` and `presence` capabilities, so 3.0 clients keep working and 3.1 clients hide friend codes on a 3.0 server.
+
+```sh
+npx wrangler d1 migrations apply omarchy-creature-community --remote
+npm run deploy
+```
+
+Friend codes are eight characters from an alphabet without look-alikes (about 40 bits). The server stores only their SHA-256, each creature has at most one live code, codes expire after seven days, and redeeming is limited to 20 attempts per creature per day on top of the IP and user rate limits. A redeemed code creates a friendship directly: sharing it is one owner's consent and entering it is the other's. Blocks in either direction prevent it.
 
 ## Upgrade from 2.1
 

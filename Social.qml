@@ -16,6 +16,16 @@ Item {
   property string lastVisitId: ""
   readonly property bool cloudRoaming: !!snapshot.capabilities && snapshot.capabilities.serverRoaming === true
   readonly property bool sharedHistory: !!snapshot.capabilities && snapshot.capabilities.sharedHistory === true
+  readonly property bool friendCodes: !!snapshot.capabilities && snapshot.capabilities.friendCodes === true
+  // Aggregate counts only: how many other creatures synced this week, and how
+  // many are in the park and free right now. Null on servers without presence.
+  readonly property var park: snapshot.park || null
+
+  // The readable friend code. The server keeps only its hash, so the code
+  // lives here, beside the other connection preferences, until it expires or
+  // is replaced.
+  property string inviteCode: ""
+  property real inviteExpires: 0
   property real clockNow: Date.now()
   readonly property var activeVisit: {
     if (!optedIn || disconnectRequested || !connected || !available) return null
@@ -53,6 +63,8 @@ Item {
         root.disconnectRequested = p.disconnectRequested === true
         root.lastVisitId = String(p.lastVisitId || "")
         root.lastFamilyMilestone = String(p.lastFamilyMilestone || "")
+        root.inviteCode = String(p.inviteCode || "")
+        root.inviteExpires = Number(p.inviteExpires) || 0
         root.optedIn = p.optedIn === true
       } catch(e) {}
       root.loaded = true
@@ -61,7 +73,7 @@ Item {
     onLoadFailed: root.loaded = true
   }
   function save() {
-    preferences.setText(JSON.stringify({serverUrl: serverUrl, optedIn: optedIn, roaming: roaming, offlineVisits: offlineVisits, disconnectRequested: disconnectRequested, lastVisitId: lastVisitId, lastFamilyMilestone: lastFamilyMilestone}))
+    preferences.setText(JSON.stringify({serverUrl: serverUrl, optedIn: optedIn, roaming: roaming, offlineVisits: offlineVisits, disconnectRequested: disconnectRequested, lastVisitId: lastVisitId, lastFamilyMilestone: lastFamilyMilestone, inviteCode: inviteCode, inviteExpires: inviteExpires}))
   }
   function connectTo(url) {
     if (busy) return
@@ -69,7 +81,7 @@ Item {
       status = "Disconnect before changing servers."
       return
     }
-    if (serverUrl !== url.trim()) { lastVisitId = ""; lastFamilyMilestone = ""; archive.setText("{}"); snapshot = {friends: [], incoming: [], outgoing: [], blocked: [], visits: []} }
+    if (serverUrl !== url.trim()) { lastVisitId = ""; lastFamilyMilestone = ""; inviteCode = ""; inviteExpires = 0; archive.setText("{}"); snapshot = {friends: [], incoming: [], outgoing: [], blocked: [], visits: []} }
     serverUrl = url.trim()
     optedIn = true
     disconnectRequested = false
@@ -86,6 +98,22 @@ Item {
   }
   function setOfflineVisits(value) { offlineVisits = value; save(); call("sync", "") }
   function setRoaming(value) { roaming = value; save(); call("sync", "") }
+
+  function createInvite() { call("invite-create", "") }
+  function revokeInvite() { call("invite-revoke", "") }
+  function acceptInvite(code) { call("invite-accept", "", {code: String(code || "")}) }
+
+  // Plain text to the Wayland clipboard. Arguments, never a shell string.
+  Process { id: clipboard }
+  function copyText(text) {
+    if (clipboard.running) return
+    clipboard.command = ["wl-copy", "--", String(text)]
+    clipboard.running = true
+  }
+
+  // Friends, remembered between syncs, to notice a new one arriving (say, from
+  // a friend code you shared). Null until the first sync, so start-up is quiet.
+  property var knownFriends: null
   function call(action, target, extra) {
     if (busy || !pet || (!optedIn && action !== "offline")) return
     if (disconnectRequested && action !== "delete") action = "offline"
@@ -94,7 +122,7 @@ Item {
     var profile = {name: pet.name, seed: pet.seed, stage: Sim.stage(pet, Date.now()), discover: available, offlineVisits: offlineVisits, autoRoam: roaming, target: target || ""}
     if (extra) for (var key in extra) profile[key] = extra[key]
     request.command = ["python3", decodeURIComponent(Qt.resolvedUrl("community/client.py").toString().replace("file://", "")), serverUrl, action, JSON.stringify(profile)]
-    status = action === "visit" ? "Looking for a playmate…" : "Connecting…"
+    status = action === "visit" ? "Looking for a playmate…" : action === "invite-accept" ? "Checking the code…" : "Connecting…"
     request.running = true
   }
   Process {
@@ -114,7 +142,7 @@ Item {
             return
           }
           if (root.pendingAction === "delete") {
-            root.optedIn = false; root.connected = false; root.disconnectRequested = false; root.lastVisitId = ""; root.lastFamilyMilestone = ""; root.save()
+            root.optedIn = false; root.connected = false; root.disconnectRequested = false; root.lastVisitId = ""; root.lastFamilyMilestone = ""; root.inviteCode = ""; root.inviteExpires = 0; root.save()
             root.snapshot = {friends: [], incoming: [], outgoing: [], blocked: [], visits: []}
             archive.setText("{}")
             root.status = "Community profile deleted. Your local pet is safe."
@@ -129,6 +157,22 @@ Item {
           }
           root.clockNow = Date.now()
           root.connected = root.optedIn
+          // A code arrives readable only when it is created; afterwards the
+          // snapshot says whether it is still the live one.
+          if (data.invite && data.invite.code) {
+            root.inviteCode = data.invite.code; root.inviteExpires = data.invite.expires; root.save()
+          } else if (root.inviteCode !== "" && (!data.invite || data.invite.expires !== root.inviteExpires)) {
+            root.inviteCode = ""; root.inviteExpires = 0; root.save()
+          }
+          var friendIds = (data.friends || []).map(function(p) { return p.id })
+          if (root.knownFriends !== null && root.service && root.service.notificationsEnabled) {
+            var fresh = (data.friends || []).filter(function(p) { return root.knownFriends.indexOf(p.id) < 0 })
+            if (fresh.length > 0) {
+              root.service.reacted("community", "heart", "", true)
+              root.service.notify(fresh[0].name + " is your friend now", root.pet.name + " and " + fresh[0].name + " can visit each other from the park.", "✨", "low", ["omarchy-shell", "shell", "summon", "creaza.tamagotchi"], false)
+            }
+          }
+          root.knownFriends = friendIds
           root.snapshot = data
           archive.setText(JSON.stringify(data))
           if (newAdventure && root.activeVisit && root.service && root.service.notificationsEnabled && !Sim.inQuietHours(new Date().getHours(), root.service.quietHours)) {

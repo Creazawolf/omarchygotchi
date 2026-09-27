@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Shapes
+import "Sim.js" as Sim
 
 // ---------------------------------------------------------------------------
 // The creature itself. Drawn entirely from primitives — no images, no fonts,
@@ -23,6 +24,8 @@ Item {
   property string stageKey: "adult"      // egg baby kid teen adult elder ghost
   property real bodyScale: 1.0           // from Sim.stageScale()
   property int seed: 12345
+  // A family's child: seeds the eyes it has of its own (Sim.traits).
+  property int ownSeed: 0
   property real happiness: 70            // 0..100, drives the mouth curve
   property bool animated: true
   // Calm motion: the creature keeps its expressions and props but stops
@@ -459,8 +462,12 @@ Item {
   // core for two bar widgets. Driving a transform node instead costs nothing
   // and looks identical: with static geometry the same creature idles at ~1%.
 
-  readonly property real bodyW: 60 * u * bodyScale
-  readonly property real bodyH: 56 * u * bodyScale
+  // Shape, ears, marking, eyes and cheeks from the seed. Static features, so
+  // they cost nothing per frame, in the bar or anywhere else.
+  readonly property var look: Sim.traits(seed, ownSeed)
+
+  readonly property real bodyW: (look.shape === "bean" ? 54 : look.shape === "chunky" ? 66 : 60) * u * bodyScale
+  readonly property real bodyH: (look.shape === "bean" ? 61 : look.shape === "chunky" ? 52 : 56) * u * bodyScale
   readonly property real bodyCx: 50 * u
   readonly property real bodyCy: 52 * u
 
@@ -559,7 +566,9 @@ Item {
 
   readonly property real eyeDx: root.bodyW * 0.215
 
-  readonly property real eyeR: (root.detail ? 9.5 : 11) * root.u * root.bodyScale
+  readonly property real eyeR: (root.detail ? 9.5 : 11) * root.u * root.bodyScale * (look.eyes === "big" ? 1.14 : 1)
+  // Narrow eyes are the same eye, a little squashed, like the mood squints.
+  readonly property real eyeShape: look.eyes === "narrow" ? 0.8 : 1
 
   readonly property real mouthCurve: {
     if (asleep) return 0.30
@@ -780,6 +789,83 @@ Item {
     }
   }
 
+  // ---- ears --------------------------------------------------------------
+  // Behind the body, and kept at bar size: ears change the silhouette, which
+  // is what tells two creatures apart at 20px.
+
+  Item {
+    id: ears
+    visible: !root.isEgg && !root.isGhost && root.look.ears !== "none"
+    anchors.fill: parent
+    readonly property real headTop: root.bodyCy - root.bodyH / 2
+    readonly property color inner: Qt.lighter(root.effectiveTint, 1.3)
+
+    Repeater {
+      model: root.look.ears === "round" ? 2 : 0
+      Rectangle {
+        required property int index
+        readonly property real dir: index === 0 ? -1 : 1
+        width: root.bodyW * 0.30
+        height: width
+        radius: width / 2
+        x: root.bodyCx + dir * root.bodyW * 0.33 - width / 2
+        y: ears.headTop + root.bodyH * 0.12 - height / 2
+        color: root.bodyDark
+        Rectangle {
+          visible: root.detail
+          anchors.centerIn: parent
+          width: parent.width * 0.52
+          height: width
+          radius: width / 2
+          color: ears.inner
+        }
+      }
+    }
+
+    Repeater {
+      model: root.look.ears === "pointy" ? 2 : 0
+      Shape {
+        id: pointyEar
+        required property int index
+        readonly property real dir: index === 0 ? -1 : 1
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        ShapePath {
+          fillColor: root.bodyDark
+          strokeWidth: 0
+          startX: root.bodyCx + pointyEar.dir * root.bodyW * 0.16
+          startY: ears.headTop + root.bodyH * 0.16
+          PathLine { x: root.bodyCx + pointyEar.dir * root.bodyW * 0.42; y: ears.headTop - root.bodyH * 0.16 }
+          PathLine { x: root.bodyCx + pointyEar.dir * root.bodyW * 0.46; y: ears.headTop + root.bodyH * 0.28 }
+        }
+        ShapePath {
+          fillColor: root.detail ? ears.inner : "transparent"
+          strokeWidth: 0
+          startX: root.bodyCx + pointyEar.dir * root.bodyW * 0.25
+          startY: ears.headTop + root.bodyH * 0.12
+          PathLine { x: root.bodyCx + pointyEar.dir * root.bodyW * 0.40; y: ears.headTop - root.bodyH * 0.06 }
+          PathLine { x: root.bodyCx + pointyEar.dir * root.bodyW * 0.42; y: ears.headTop + root.bodyH * 0.18 }
+        }
+      }
+    }
+
+    Repeater {
+      model: root.look.ears === "floppy" ? 2 : 0
+      Rectangle {
+        required property int index
+        readonly property real dir: index === 0 ? -1 : 1
+        width: root.bodyW * 0.17
+        height: root.bodyH * 0.40
+        radius: width / 2
+        x: root.bodyCx + dir * root.bodyW * 0.40 - width / 2
+        y: ears.headTop + root.bodyH * 0.02
+        color: root.bodyDark
+        transformOrigin: Item.Top
+        rotation: dir * -38 + root.sway * 3 * dir
+      }
+    }
+  }
+
   // ---- body --------------------------------------------------------------
   Rectangle {
     id: body
@@ -806,6 +892,72 @@ Item {
       radius: width / 2
       color: Qt.lighter(root.effectiveTint, 1.40)
       opacity: 0.55
+    }
+
+    // Marking: spots, forehead stripes, a patch around one eye, or freckles.
+    // Drawn in the body's own darker shade, so they belong to its colour.
+    Item {
+      id: marking
+      visible: root.detail && !root.isGhost && root.look.marking !== "none"
+      anchors.fill: parent
+      readonly property real side: root.look.side
+      readonly property color ink: Qt.darker(root.effectiveTint, 1.45)
+
+      Repeater {
+        model: root.look.marking === "spots" ? [[0.20, 0.20, 0.13], [0.70, 0.09, 0.09], [0.82, 0.30, 0.07]] : []
+        Rectangle {
+          required property var modelData
+          width: body.width * modelData[2]
+          height: width
+          radius: width / 2
+          x: (marking.side > 0 ? modelData[0] : 1 - modelData[0]) * body.width - width / 2
+          y: modelData[1] * body.height
+          color: marking.ink
+          opacity: 0.42
+        }
+      }
+
+      Repeater {
+        model: root.look.marking === "stripes" ? [-1, 0, 1] : []
+        Rectangle {
+          required property var modelData
+          width: body.width * 0.055
+          height: body.height * (modelData === 0 ? 0.17 : 0.13)
+          radius: width / 2
+          x: body.width * (0.5 + modelData * 0.10) - width / 2
+          y: body.height * 0.035
+          rotation: modelData * 14
+          color: marking.ink
+          opacity: 0.5
+        }
+      }
+
+      Rectangle {
+        visible: root.look.marking === "patch"
+        width: root.eyeR * 3.0
+        height: root.eyeR * 2.7
+        radius: height / 2
+        x: body.width / 2 + marking.side * root.eyeDx - width / 2
+        y: root.eyeY - (root.bodyCy - root.bodyH / 2) - height / 2
+        color: marking.ink
+        opacity: 0.38
+      }
+
+      Repeater {
+        model: root.look.marking === "freckles" ? 6 : 0
+        Rectangle {
+          required property int index
+          readonly property real dir: index < 3 ? -1 : 1
+          readonly property int k: index % 3
+          width: Math.max(1, body.width * 0.028)
+          height: width
+          radius: width / 2
+          x: body.width / 2 + dir * (root.eyeDx + (k - 1) * body.width * 0.05) - width / 2
+          y: root.eyeY - (root.bodyCy - root.bodyH / 2) + root.eyeR * (1.35 + (k === 1 ? 0.25 : 0))
+          color: marking.ink
+          opacity: 0.6
+        }
+      }
     }
 
     // Specular highlight, top-left, always. Consistency here is what stops it
@@ -952,7 +1104,7 @@ Item {
           origin.x: root.eyeR; origin.y: root.eyeR
           // The squint on a low-energy or sad face is a vertical squash of the
           // same eye, so there is only ever one eye to keep in sync.
-          yScale: root.blink * (root.mood === "tired" || root.mood === "weak" ? 0.45
+          yScale: root.blink * root.eyeShape * (root.mood === "tired" || root.mood === "weak" ? 0.45
                               : (root.mood === "sad" ? 0.72 : 1))
         }
       }
@@ -967,7 +1119,7 @@ Item {
         color: root.inkColor
         transform: Scale {
           origin.x: pupil.width / 2; origin.y: pupil.height / 2
-          yScale: root.blink * (root.mood === "tired" || root.mood === "weak" ? 0.45 : 1)
+          yScale: root.blink * root.eyeShape * (root.mood === "tired" || root.mood === "weak" ? 0.45 : 1)
         }
 
         Rectangle {
@@ -977,6 +1129,16 @@ Item {
           x: parent.width * 0.14
           y: parent.height * 0.14
           color: Qt.rgba(1, 1, 1, 0.92)
+        }
+        // Sparkly eyes carry a second, smaller catchlight.
+        Rectangle {
+          visible: root.look.eyes === "sparkle" && root.detail
+          width: parent.width * 0.18
+          height: width
+          radius: width / 2
+          x: parent.width * 0.62
+          y: parent.height * 0.60
+          color: Qt.rgba(1, 1, 1, 0.85)
         }
       }
     }
@@ -1084,7 +1246,7 @@ Item {
       radius: width / 2
       x: root.bodyCx + dir * root.bodyW * 0.36 - width / 2
       y: root.eyeY + root.eyeR * 0.85
-      color: root.mood === "sick" ? "#8fbf6a" : "#f08fa8"
+      color: root.mood === "sick" ? "#8fbf6a" : root.look.cheek
       opacity: root.dancing ? 0.7
              : (root.mood === "ecstatic" ? 0.75
              : (root.mood === "happy" || root.mood === "sick" ? 0.5 : 0.22))

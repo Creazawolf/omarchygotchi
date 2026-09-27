@@ -1,4 +1,5 @@
 import {story, historySnapshot, familyAction} from './stories.mjs';
+import {inviteAction, presence} from './invites.mjs';
 const STAGES = new Set(['egg','baby','kid','teen','adult','elder','ghost']);
 const DAY = 86400;
 const PRESENCE = 900;
@@ -69,9 +70,9 @@ async function snapshot(db,pid,now) {
       AND NOT EXISTS (SELECT 1 FROM blocks WHERE (src=? AND dst=p.id) OR (src=p.id AND dst=?))
       ORDER BY v.at DESC,v.id DESC LIMIT 30`).bind(pid,pid,pid,now-30*DAY,pid,pid)
   ]);
-  const result = {id:pid,friends:[],incoming:[],outgoing:[],blocked:blocked.results.map(p=>publicPet(p,now)),visits:visits.results.map(v=>({id:v.visit_id,activity:v.activity,at:v.at,creature:publicPet(v,now),scene:v.scene?JSON.parse(v.scene):null,until:v.at+900})),capabilities:{offlineVisits:true,serverRoaming:true,sharedHistory:true,families:true}};
+  const result = {id:pid,friends:[],incoming:[],outgoing:[],blocked:blocked.results.map(p=>publicPet(p,now)),visits:visits.results.map(v=>({id:v.visit_id,activity:v.activity,at:v.at,creature:publicPet(v,now),scene:v.scene?JSON.parse(v.scene):null,until:v.at+900})),capabilities:{offlineVisits:true,serverRoaming:true,sharedHistory:true,families:true,friendCodes:true,presence:true}};
   for (const r of relationships.results) result[r.status==='friends'?'friends':r.src===pid?'outgoing':'incoming'].push(publicPet(r,now));
-  return {...result,...await historySnapshot(db,pid,now,publicPet)};
+  return {...result,...await historySnapshot(db,pid,now,publicPet),...await presence(db,pid,now,PRESENCE)};
 }
 async function makeVisit(db,pid,target,now,automatic=false) {
   const cutoff = now-(automatic?AUTO_COOLDOWN:COOLDOWN);
@@ -112,6 +113,8 @@ async function action(db,me,kind,data,now) {
   }
   if (kind==='delete') { await db.prepare('DELETE FROM pets WHERE id=?').bind(pid).run(); return 'Community profile deleted.'; }
   if(['egg-accept','egg-cancel'].includes(kind)) return familyAction(db,pid,kind,data,now,(m,s)=>{throw new Problem(m,s)},randomHex);
+  const invited=await inviteAction(db,pid,kind,data,now,{fail:(m,s)=>{throw new Problem(m,s)},quota,hash,makeVisit});
+  if(invited!==null) return invited;
   let target=data.target || '';
   if (kind==='visit' && !target) {
     // Bound the candidate set; the final insert remains authoritative under races.
@@ -193,9 +196,9 @@ async function action(db,me,kind,data,now) {
 export async function fetchHandler(request,env) {
   try {
     const path=new URL(request.url).pathname;
-    if (request.method==='GET' && path==='/health') return reply({ok:true,service:'Omarchy Creature Community',version:'3.0.0'});
+    if (request.method==='GET' && path==='/health') return reply({ok:true,service:'Omarchy Creature Community',version:'3.1.0'});
     if (request.method!=='POST') throw new Problem('Use a JSON POST request.',405);
-    const match=/^\/v1\/(register|sync|offline|delete|visit|request|accept|decline|remove|block|unblock|romance|egg-propose|egg-accept|egg-cancel)$/.exec(path);
+    const match=/^\/v1\/(register|sync|offline|delete|visit|request|accept|decline|remove|block|unblock|romance|egg-propose|egg-accept|egg-cancel|invite-create|invite-accept|invite-revoke)$/.exec(path);
     if (!match) throw new Problem('Unknown community action.',404);
     const kind=match[1],now=nowSeconds();
     const ip=request.headers.get('CF-Connecting-IP') || 'local';
@@ -220,9 +223,10 @@ export async function fetchHandler(request,env) {
     await limited(env.USER_LIMIT,digest);
     const me=await env.DB.prepare('SELECT id FROM pets WHERE token_hash=? AND banned=0').bind(digest).first();
     if (!me) throw new Problem('Community identity is invalid or disabled.',401);
-    const message=await action(env.DB,me,kind,data,now);
+    const outcome=await action(env.DB,me,kind,data,now);
+    const message=typeof outcome==='string'?outcome:outcome.message;
     if (kind==='delete') return reply({message});
-    return reply({...await snapshot(env.DB,me.id,now),message});
+    return reply({...await snapshot(env.DB,me.id,now),...(typeof outcome==='string'?{}:outcome.extra),message});
   } catch(error) {
     if (error instanceof Problem) return reply({error:error.message},error.status);
     // Database errors and credentials never reach the client or application logs.
@@ -245,7 +249,8 @@ export async function scheduledHandler(env,now=nowSeconds()) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM visits WHERE at<?').bind(now-30*DAY),
     env.DB.prepare('DELETE FROM quotas WHERE window<?').bind(now-2*DAY),
-    env.DB.prepare('DELETE FROM families WHERE accepted_at=0 AND proposed_at<?').bind(now-7*DAY)
+    env.DB.prepare('DELETE FROM families WHERE accepted_at=0 AND proposed_at<?').bind(now-7*DAY),
+    env.DB.prepare('DELETE FROM invites WHERE expires<?').bind(now)
   ]);
   return visits;
 }

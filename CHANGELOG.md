@@ -11,6 +11,10 @@
 - Calm motion setting for less movement.
 - Play moved from `L` to `G`; `H`/`L` switch tabs and `J`/`K` scroll, like the shell's other panels.
 - Fixes: shadows under young creatures, sparkles follow the creature, keepsake corners and a stray star, no "Add friend" for existing friends.
+- Every creature is one of a kind: body shape, ears, markings, eyes and cheeks from its seed. Children visibly take after both parents, with eyes of their own.
+- Community is a park: your friends stand on the grass, awake or napping, and a click opens your story with them. Moments are a strip of pictures; rare actions and server settings are folded away.
+- Friend codes: share one anywhere, and whoever enters it becomes your friend straight away. Honest park presence shows how many creatures were around this week and right now. Needs community server 3.1 (migration `0003_invites.sql`).
+- Keepsakes are painted in your theme's colours and name Omarchygotchi. New **Portrait** of your own creature. Images save to `~/Pictures/Omarchygotchi` and can be copied to the clipboard.
 
 ## 3.0.0 — 2026-09-15
 

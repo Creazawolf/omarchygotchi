@@ -18,7 +18,9 @@ A creature lives in your bar, reacts to your day, and grows with you. Open its h
 - **Friendships with a history.** Shared memories and keepsakes outlast the visit journal. Romance is optional and needs both owners' agreement.
 - **A family across two desktops.** Eligible sweethearts can plan one shared egg, agree on its home, and watch their child grow in both family albums.
 - **Care without the guilt.** Gentle care is on by default. Your creature looks after itself while you are away; death from neglect and care reminders are off.
-- **Keep a moment.** Export a visit or family scene as a PNG with your own caption. You decide whether to share it.
+- **One of a kind.** Every creature has its own body shape, ears, markings, eyes and colour, the same on every desktop that meets it. Nothing is rare; everything is recognisable.
+- **Bring a friend.** Share a friend code in any chat. Whoever enters it becomes your friend straight away, even if you're away.
+- **Keep a moment.** Save a visit, a family scene, or a portrait of your creature in your theme's colours, with your own caption. It goes to `~/Pictures/Omarchygotchi` and can be copied straight to the clipboard. You decide whether to share it.
 
 Community encounters are recorded shared stories, not live synchronized movement or chat. An empty park stays empty. The preview images show demo characters rendered with the actual plugin components.
 
@@ -37,8 +39,8 @@ Choose a bar position when prompted. The companion starts locally; joining the c
 1. **Click the creature in your bar.** Click the egg or press `Enter` to hatch it, then give your companion a name. Click its name any time to change it.
 2. **Say hello.** Open **A little care** to feed, pet, play, or clean. Try `F` to feed, `P` to pet, and `G` to play while the Creature panel is open; `H`/`L` switch between Creature and Community.
 3. **Let it grow.** Listen to music, get on with your day, and check back for a little reaction.
-4. **Meet the neighbours.** Open **Community → Connect**, then **Find a playmate**. Another available creature must be connected to the same server.
-5. **Make a friend.** After a visit, send a friend request. The other owner chooses whether to accept. Auto-roam and offline adventures are separate opt-ins.
+4. **Meet the neighbours.** Open **Community → Join the park**, then **Find a playmate**. Another available creature must be in the park at the same time; the park shows how many were around this week.
+5. **Make a friend.** Swap friend codes with someone you know (**Bring a friend**), or send a request after meeting a stranger; their owner decides. Friends stand in your park: awake if their owner is at their desk, napping if not. Click one to invite them over. Auto-roam and offline adventures are separate opt-ins under **Park settings**.
 
 Families take time: romance needs adult or elder friends, three encounters, and mutual opt-in. Planning an egg needs six encounters and both owners' agreement. Children grow without extra care meters.
 
@@ -47,7 +49,7 @@ Families take time: romance needs adult or elder friends, three encounters, and 
 
 ![An example family keepsake rendered by the plugin](docs/family.png)
 
-Demo family. Children inherit markings and colour from their parents. See the [full guide](docs/GUIDE.md) for growth stages, consent, and family limits.
+Demo family. A child looks like one parent in the other parent's colour, with eyes of its own. See the [full guide](docs/GUIDE.md) for growth stages, consent, and family limits.
 
 </details>
 
@@ -81,22 +83,23 @@ omarchy plugin remove creaza.tamagotchi
 
 The internal ID remains `creaza.tamagotchi` so older installations and saves stay compatible with the new Omarchygotchi name.
 
-Your local pet save is kept when you remove the plugin. Before removal, use **Community → Delete profile** if you want to delete your server identity, or **Disconnect** to withdraw availability. Merely disabling the plugin does not cancel an enabled offline-adventure lease, which expires after seven days.
+Your local pet save is kept when you remove the plugin. Before removal, use **Community → Park settings → Delete community profile** if you want to delete your server identity, or **Leave the park** to withdraw availability. Merely disabling the plugin does not cancel an enabled offline-adventure lease, which expires after seven days.
 
 If you previously installed a manual copy, back up its files and your save before replacing it with the Git-managed installation. Existing 2.x saves are supported. See the [upgrade and settings guide](docs/GUIDE.md).
 
 ## Privacy and storage
 
-The companion works offline. **Connect** opts into the public community service at `omarchy-creature-community.omarchy-creature-community.workers.dev`. It sends the creature's name, appearance seed, life stage, availability, and your social actions. The host processes connection metadata; desktop activity, window titles, music titles, and your local pet save are not uploaded.
+The companion works offline. **Join the park** opts into the public community service at `omarchy-creature-community.omarchy-creature-community.workers.dev`. It sends the creature's name, appearance seed, life stage, availability, and your social actions. The host processes connection metadata; desktop activity, window titles, music titles, and your local pet save are not uploaded.
 
-System awareness is local and can be disabled in widget settings. Community credentials stay in private files, not command arguments. There is no password login or identity recovery: keep your private local state if you want to retain access to your community profile.
+System awareness is local and can be disabled in widget settings. Community credentials stay in private files, not command arguments. Your friend code is stored with your connection preferences; the server keeps only a hash of it, and it expires after a week. The park's numbers are counts only: nobody can see who else was around. There is no password login or identity recovery: keep your private local state if you want to retain access to your community profile.
 
 | Local file or directory | Purpose |
 |---|---|
 | `~/.local/state/omarchy/tamagotchi.json` | Pet, progress, and ancestry |
 | `~/.local/state/omarchy/tamagotchi-community-settings.json` | Connection preferences |
 | `~/.local/state/omarchy/tamagotchi-community-history.json` | Cached shared history |
-| `~/.local/state/omarchy/tamagotchi-community/` | Private identities and exported PNGs |
+| `~/.local/state/omarchy/tamagotchi-community/` | Private identities |
+| `~/Pictures/Omarchygotchi/` | Portraits and keepsakes you choose to save |
 
 Back these up privately; do not include them in bug reports. Blocking and profile deletion are available in Community. Agreed family portraits can remain in the other parent's album after deletion. Public creature names are visible to other participants, so choose one you are happy to share.
 

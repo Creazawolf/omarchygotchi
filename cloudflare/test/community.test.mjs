@@ -8,7 +8,7 @@ import {fetchHandler,scheduledHandler,hash} from '../src/worker.mjs';
 // Real SQLite executes the same parameterized SQL and triggers as D1.
 // Wrangler's local runtime is checked separately before deployment.
 class D1 {
-  constructor() { this.sqlite=new DatabaseSync(':memory:'); this.sqlite.exec('PRAGMA foreign_keys=ON'); for(const file of ['0001_community.sql','0002_shared_history.sql']) this.sqlite.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8')); }
+  constructor() { this.sqlite=new DatabaseSync(':memory:'); this.sqlite.exec('PRAGMA foreign_keys=ON'); for(const file of ['0001_community.sql','0002_shared_history.sql','0003_invites.sql']) this.sqlite.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8')); }
   prepare(sql) {
     const db=this.sqlite;
     const make=(args=[])=>({bind(...values){return make(values)},
@@ -234,4 +234,48 @@ test('hat stories do not skip a borrowing and a new couple has no premature anni
   }
   const date=story(a,b,{encounters:6,together_at:100,last_at:99},200);
   assert.match(date.activity,/awkward date/);
+});
+test('a shared friend code makes two creatures friends at once and can be replaced',async t=>{
+  const {join,call}=harness(t);const a=await join('Pixel'),b=await join('Bean'),c=await join('Mochi');
+  const created=await call('invite-create',{},a.token);
+  assert.match(created.invite.code,/^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/);
+  assert.ok(created.invite.expires>Math.floor(Date.now()/1000)+6*86400);
+  // Only the owner's creation response carries the readable code.
+  assert.equal((await call('sync',a.profile,a.token)).invite.code,undefined);
+  assert.ok((await call('sync',a.profile,a.token)).invite.expires>0);
+  await call('invite-accept',{code:created.invite.code},a.token,409);
+  const met=await call('invite-accept',{code:created.invite.code.toLowerCase().replace('-',' ')},b.token);
+  assert.match(met.message,/You and Pixel are friends/);
+  assert.equal(met.friends[0].id,a.id);
+  assert.equal((await call('sync',a.profile,a.token)).friends[0].id,b.id);
+  // Both creatures were free, so they met at the gate and share a first story.
+  assert.equal(met.visits.length,1);assert.equal(met.bonds[0].creature.id,a.id);
+  // A new code replaces the old one immediately.
+  const next=await call('invite-create',{},a.token);assert.notEqual(next.invite.code,created.invite.code);
+  await call('invite-accept',{code:created.invite.code},c.token,404);
+  await call('invite-accept',{code:next.invite.code},c.token);
+  await call('invite-revoke',{},a.token);
+  assert.equal((await call('sync',a.profile,a.token)).invite,null);
+});
+test('friend codes respect blocks, expiry, format and attempt limits',async t=>{
+  const {join,call,DB}=harness(t);const a=await join('Pixel'),b=await join('Bean'),c=await join('Mochi');
+  const code=(await call('invite-create',{},a.token)).invite.code;
+  await call('block',{target:b.id},a.token);
+  await call('invite-accept',{code},b.token,403);
+  assert.deepEqual((await call('sync',b.profile,b.token)).friends,[]);
+  await call('invite-accept',{code:'O0I1-L000'},c.token,400);
+  DB.sqlite.exec('UPDATE invites SET expires=1');
+  await call('invite-accept',{code},c.token,404);
+  // Guessing is bounded per creature per day, hit or miss.
+  for(let i=0;i<19;i++) await call('invite-accept',{code:'2222-2222'},c.token,404);
+  await call('invite-accept',{code:'2222-2222'},c.token,429);
+});
+test('park presence counts other creatures this week and in the park now',async t=>{
+  const {join,call,DB}=harness(t);const a=await join('Pixel'),b=await join('Bean');await join('Mochi',{discover:false});
+  const now=Math.floor(Date.now()/1000);
+  let park=(await call('sync',a.profile,a.token)).park;
+  assert.deepEqual(park,{week:2,now:1});
+  DB.sqlite.exec(`UPDATE pets SET seen=${now-8*86400} WHERE id='${b.id}'`);
+  park=(await call('sync',a.profile,a.token)).park;
+  assert.deepEqual(park,{week:1,now:0});
 });
