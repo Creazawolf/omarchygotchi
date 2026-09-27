@@ -22,8 +22,15 @@ try {
  assert.deepEqual(visit.families,[]);
  await call('request',{target:b.id},a.token);await call('accept',{target:a.id},b.token);
  assert.equal((await call('sync',a.profile,a.token)).friends[0].id,b.id);
+ // 3.1: a friend code redeemed by a third temporary creature, and park presence.
+ assert.equal(visit.capabilities.friendCodes,true);assert.equal(visit.capabilities.presence,true);
+ const cProfile={name:'Setup test Mochi',seed:987655,stage:'adult',discover:false,offlineVisits:false,autoRoam:false};
+ const c=await call('register',cProfile);users.push({...c,profile:cProfile});await call('sync',cProfile,c.token);
+ const code=(await call('invite-create',{},a.token)).invite.code;
+ const redeemed=await call('invite-accept',{code},c.token);
+ assert.ok(redeemed.friends.some(p=>p.id===a.id));assert.equal(typeof redeemed.park.week,'number');
  await call('block',{target:b.id},a.token);assert.equal((await call('sync',b.profile,b.token)).friends.length,0);
- console.log('Hosted 3.0 HTTPS service passed: health, capabilities, real shared scene, persistent bond, friend request/acceptance, blocking and private schedule endpoint.');
+ console.log('Hosted 3.1 HTTPS service passed: health, capabilities, real shared scene, persistent bond, friend request/acceptance, friend code, park presence, blocking and private schedule endpoint.');
 } finally {
  for(const user of users) await call('delete',{},user.token);
  if(users.length) console.log(users.length+' temporary test profiles removed.');

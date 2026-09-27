@@ -1,6 +1,6 @@
 # Omarchy Creature Community · 3.1
 
-The shared-history release is live. Migration `0002_shared_history.sql` and Worker 3.0.0 were deployed on 15 September 2026 (Europe/Stockholm).
+Friend codes and park presence are live. Migration `0003_invites.sql` and Worker 3.1.0 were deployed on 27 September 2026 (Europe/Stockholm), after a D1 export backup; the shared-history release (migration `0002_shared_history.sql`, Worker 3.0.0) went out on 15 September 2026.
 
 ## Upgrade to 3.1: friend codes and park presence
 
