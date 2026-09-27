@@ -53,7 +53,7 @@ var NAMES = [
   "Dumpling", "Kiwi", "Tofu", "Wobble", "Marble", "Pudding", "Button",
   "Clover", "Doodle", "Fig", "Gumdrop", "Nibble", "Moss", "Pesto",
   "Quark", "Sprocket", "Tater", "Yuzu", "Cosmo", "Echo", "Latte",
-  "Kernel", "Grep", "Sudo", "Cache", "Glitch", "Patch", "Bit"
+  "Kernel", "Grep", "Lint", "Cache", "Glitch", "Patch", "Bit"
 ]
 
 // A different name from the list, for the reroll next to the naming field.
